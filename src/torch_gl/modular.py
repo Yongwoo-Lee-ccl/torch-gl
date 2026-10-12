@@ -1,13 +1,14 @@
-"""Overflow-safe arithmetic on canonical torch.int64 residues.
+"""Exact single-limb arithmetic on canonical torch.int64 residues.
 
-Internal operands must lie in [0, q). At q <= 2**62-1, sums of two
-residues fit int64. Large products use binary add-and-double instead
-of an overflowing native product. These routines are not constant-time.
+Internal operands lie in [0,q), with q<2**30. Ordinary products fit
+signed int64 directly. Larger moduli belong in a higher-level RNS layer.
 """
+
+from dataclasses import dataclass
+from functools import lru_cache
 
 import torch
 
-_DIRECT_PRODUCT_LIMIT = 3_037_000_500
 _INTEGER_DTYPES = {torch.int8, torch.int16, torch.int32, torch.int64, torch.uint8}
 
 
@@ -20,31 +21,63 @@ def residues(value: torch.Tensor, q: int) -> torch.Tensor:
 
 
 def mul_mod(left: torch.Tensor, right: torch.Tensor | int, q: int) -> torch.Tensor:
-    if q <= _DIRECT_PRODUCT_LIMIT:
-        return (left * right).remainder(q)
-    if isinstance(right, int):
-        right %= q
-        result = torch.zeros_like(left)
-        while right:
-            if right & 1:
-                result = (result + left).remainder(q)
-            right >>= 1
-            if right:
-                left = (left + left).remainder(q)
-        return result
-    left, right = torch.broadcast_tensors(left, right)
-    result = torch.zeros_like(left)
-    for _ in range(q.bit_length()):
-        result = (result + torch.where((right & 1).bool(), left, 0)).remainder(q)
-        right = right >> 1
-        left = (left + left).remainder(q)
-    return result
+    return (left * right).remainder(q)
+
+
+def add_mod(left: torch.Tensor, right: torch.Tensor | int, q: int) -> torch.Tensor:
+    total = left + right
+    return torch.where(total >= q, total - q, total)
+
+
+def sub_mod(left: torch.Tensor, right: torch.Tensor | int, q: int) -> torch.Tensor:
+    difference = left - right
+    return torch.where(difference < 0, difference + q, difference)
+
+
+@dataclass(frozen=True)
+class ResidueArithmetic:
+    """Normal-form arithmetic shared by an entire transform or product."""
+
+    q: int
+
+    def constant(self, value: int) -> int:
+        return value % self.q
+
+    def multiply(self, left: torch.Tensor, right: torch.Tensor | int) -> torch.Tensor:
+        return (left * right).remainder(self.q)
+
+    def add(self, left: torch.Tensor, right: torch.Tensor | int) -> torch.Tensor:
+        if left.device.type == "cpu":
+            return (left + right).remainder(self.q)
+        return add_mod(left, right, self.q)
+
+    def subtract(self, left: torch.Tensor, right: torch.Tensor | int) -> torch.Tensor:
+        if left.device.type == "cpu":
+            return (left - right).remainder(self.q)
+        return sub_mod(left, right, self.q)
+
+
+@lru_cache(maxsize=128)
+def arithmetic_context(q: int) -> ResidueArithmetic:
+    return ResidueArithmetic(q)
 
 
 def gaussian_mul(left: torch.Tensor, right: torch.Tensor, q: int) -> torch.Tensor:
     """Multiply (..., 2) coefficient pairs using i**2 = -1."""
+    arithmetic = arithmetic_context(q)
+    return gaussian_mul_residues(left, right, arithmetic)
+
+
+def gaussian_mul_residues(
+    left: torch.Tensor, right: torch.Tensor, arithmetic: ResidueArithmetic
+) -> torch.Tensor:
+    """Gaussian product within the chosen internal representation."""
     left_real, left_imag = left.unbind(-1)
     right_real, right_imag = right.unbind(-1)
-    real = (mul_mod(left_real, right_real, q) - mul_mod(left_imag, right_imag, q)).remainder(q)
-    imag = (mul_mod(left_real, right_imag, q) + mul_mod(left_imag, right_real, q)).remainder(q)
+    real = arithmetic.subtract(
+        arithmetic.multiply(left_real, right_real), arithmetic.multiply(left_imag, right_imag)
+    )
+    imag = arithmetic.add(
+        arithmetic.multiply(left_real, right_imag), arithmetic.multiply(left_imag, right_real)
+    )
     return torch.stack((real, imag), dim=-1)

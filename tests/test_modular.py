@@ -4,9 +4,7 @@ import torch
 from torch_gl.modular import gaussian_mul, mul_mod
 
 
-@pytest.mark.parametrize(
-    "q", [97, 2013265921, 3221225473, 1152921504606847009, 4611686018427387841]
-)
+@pytest.mark.parametrize("q", [97, 65537, 469762049, 754974721, 1073741823])
 def test_products_against_python_big_integers(q):
     left_values = [0, 1, q - 1, q - 2, q // 2, q // 3]
     right_values = [q - 1, q - 2, q - 1, q - 2, q // 3, q // 2]

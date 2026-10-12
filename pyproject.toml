@@ -22,7 +22,7 @@ dev = ["pytest>=8", "ruff>=0.6", "build>=1.2", "hatchling>=1.25"]
 packages = ["src/torch_gl"]
 
 [tool.hatch.build.targets.sdist]
-include = ["/src", "/tests", "/scripts", "/docs", "/examples", "/README.md", "/CONTRIBUTING.md", "/CHANGELOG.md", "/pyproject.toml"]
+include = ["/src", "/tests", "/scripts", "/docs", "/examples", "/benchmarks", "/README.md", "/CONTRIBUTING.md", "/CHANGELOG.md", "/pyproject.toml"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

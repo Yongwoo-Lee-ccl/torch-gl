@@ -2,7 +2,7 @@
 
 from functools import lru_cache
 
-MAX_MODULUS = (1 << 62) - 1
+MAX_MODULUS = (1 << 30) - 1
 
 
 def is_prime(n: int) -> bool:

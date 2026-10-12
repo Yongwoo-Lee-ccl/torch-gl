@@ -1,0 +1,149 @@
+{
+  "torch_version": "2.14.1",
+  "platform": "macOS-26.5.1-arm64-arm-64bit-Mach-O",
+  "device": "cpu",
+  "cpu_threads": 4,
+  "q": 754974721,
+  "q_bits": 30,
+  "compiled": false,
+  "warmup": 5,
+  "repeats": 20,
+  "measurements": [
+    {
+      "operation": "ntt",
+      "batch": 64,
+      "length": 16,
+      "shape": [
+        64,
+        16
+      ],
+      "median_ms": 0.08218747097998857,
+      "compiled": false
+    },
+    {
+      "operation": "ntt",
+      "batch": 64,
+      "length": 256,
+      "shape": [
+        64,
+        256
+      ],
+      "median_ms": 0.6022915185894817,
+      "compiled": false
+    },
+    {
+      "operation": "cyclotomic",
+      "batch": 64,
+      "length": 6,
+      "shape": [
+        64,
+        6,
+        2
+      ],
+      "median_ms": 0.07850001566112041,
+      "compiled": false
+    },
+    {
+      "operation": "gaussian",
+      "batch": 64,
+      "length": 256,
+      "shape": [
+        64,
+        256,
+        2
+      ],
+      "median_ms": 1.8037499976344407,
+      "compiled": false
+    },
+    {
+      "operation": "normal_mul",
+      "batch": 64,
+      "length": 256,
+      "shape": [
+        64,
+        256
+      ],
+      "median_ms": 0.02285451046191156,
+      "compiled": false
+    },
+    {
+      "operation": "montgomery_mul",
+      "batch": 64,
+      "length": 256,
+      "shape": [
+        64,
+        256
+      ],
+      "median_ms": 0.061166996601969004,
+      "compiled": false
+    },
+    {
+      "operation": "ntt",
+      "batch": 4096,
+      "length": 16,
+      "shape": [
+        4096,
+        16
+      ],
+      "median_ms": 1.266041974304244,
+      "compiled": false
+    },
+    {
+      "operation": "ntt",
+      "batch": 4096,
+      "length": 256,
+      "shape": [
+        4096,
+        256
+      ],
+      "median_ms": 12.002520496025681,
+      "compiled": false
+    },
+    {
+      "operation": "cyclotomic",
+      "batch": 4096,
+      "length": 6,
+      "shape": [
+        4096,
+        6,
+        2
+      ],
+      "median_ms": 0.9477084968239069,
+      "compiled": false
+    },
+    {
+      "operation": "gaussian",
+      "batch": 4096,
+      "length": 256,
+      "shape": [
+        4096,
+        256,
+        2
+      ],
+      "median_ms": 34.87231198232621,
+      "compiled": false
+    },
+    {
+      "operation": "normal_mul",
+      "batch": 4096,
+      "length": 256,
+      "shape": [
+        4096,
+        256
+      ],
+      "median_ms": 0.6149585242383182,
+      "compiled": false
+    },
+    {
+      "operation": "montgomery_mul",
+      "batch": 4096,
+      "length": 256,
+      "shape": [
+        4096,
+        256
+      ],
+      "median_ms": 2.215957996668294,
+      "compiled": false
+    }
+  ]
+}

@@ -5,13 +5,16 @@ import pytest
 import torch
 
 from torch_gl import PolynomialRing, QuotientAxis
+from torch_gl._number_theory import MAX_MODULUS
 
 CASES = json.loads((Path(__file__).parent / "data/sage_multiplication.json").read_text())["cases"]
 DEVICES = ["cpu"] + (["cuda"] if torch.cuda.is_available() else [])
 
 
 @pytest.mark.parametrize("device", DEVICES)
-@pytest.mark.parametrize("case", CASES, ids=lambda case: case["name"])
+@pytest.mark.parametrize(
+    "case", [case for case in CASES if case["q"] <= MAX_MODULUS], ids=lambda case: case["name"]
+)
 def test_multiplication_against_saved_sage_vectors(case, device):
     if case["name"] == "custom_gaussian_ideal":
         axes = tuple(
@@ -31,6 +34,16 @@ def test_multiplication_against_saved_sage_vectors(case, device):
     )
     product = ring.polynomial(left) * ring.polynomial(right)
     assert torch.equal(product.coefficients, expected)
+
+
+@pytest.mark.parametrize(
+    "case", [case for case in CASES if case["q"] > MAX_MODULUS], ids=lambda case: case["name"]
+)
+def test_historical_large_limb_vectors_are_rejected(case):
+    # Preserve the once-generated file; these two historical cases are now
+    # outside the deliberate single-limb parameter range.
+    with pytest.raises(ValueError, match="q must be an odd prime"):
+        PolynomialRing.multivariate_poly(case["q"], case["n"], case["p"])
 
 
 def test_native_path_has_compact_dimensions():

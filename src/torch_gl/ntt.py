@@ -1,53 +1,65 @@
 """Exact mixed-radix (2 and 3) number-theoretic transforms."""
 
+from collections.abc import Callable
 from dataclasses import dataclass
 from functools import lru_cache
 
 import torch
 
 from ._number_theory import root_of_unity, smooth_factors
-from .modular import mul_mod, residues
+from ._transform_tables import resolve_device, stage_tables
+from .modular import ResidueArithmetic, arithmetic_context, residues
 
 
 @lru_cache(maxsize=256)
-def _powers(q: int, root: int, length: int) -> tuple[int, ...]:
-    values = [1]
-    for _ in range(1, length):
-        values.append(values[-1] * root % q)
-    return tuple(values)
+def _butterfly_constants(q: int, root: int, length: int) -> tuple[tuple[int, int, int], ...]:
+    arithmetic = arithmetic_context(q)
+    stages = []
+    while length > 1:
+        radix = 2 if length % 2 == 0 else 3
+        branch_length = length // radix
+        omega = pow(root, branch_length, q)
+        stages.append((radix, arithmetic.constant(omega), arithmetic.constant(omega * omega % q)))
+        root = pow(root, radix, q)
+        length = branch_length
+    return tuple(stages)
 
 
-def _dft(values: torch.Tensor, q: int, root: int) -> torch.Tensor:
+def _dft(
+    values: torch.Tensor,
+    arithmetic: ResidueArithmetic,
+    tables: tuple[torch.Tensor, ...],
+    constants: tuple[tuple[int, int, int], ...],
+    depth: int = 0,
+) -> torch.Tensor:
     """Decimation in time with vectorized radix-2 and radix-3 butterflies."""
     length = values.shape[-1]
     if length == 1:
-        return values.clone()
-    radix = 2 if length % 2 == 0 else 3
+        return values
+    radix, omega, omega_squared = constants[depth]
     branch_length = length // radix
     branches = values.reshape(*values.shape[:-1], branch_length, radix).transpose(-2, -1)
-    branches = _dft(branches, q, pow(root, radix, q))
-    twiddle = torch.tensor(_powers(q, root, branch_length), dtype=torch.int64, device=values.device)
+    branches = _dft(branches, arithmetic, tables, constants, depth + 1)
+    twiddles = tables[depth]
     first_branch = branches[..., 0, :]
-    second_branch = mul_mod(branches[..., 1, :], twiddle, q)
+    second_branch = arithmetic.multiply(branches[..., 1, :], twiddles[0])
     if radix == 2:
         output = (
-            (first_branch + second_branch).remainder(q),
-            (first_branch - second_branch).remainder(q),
+            arithmetic.add(first_branch, second_branch),
+            arithmetic.subtract(first_branch, second_branch),
         )
     else:
-        third_branch = mul_mod(branches[..., 2, :], mul_mod(twiddle, twiddle, q), q)
-        omega = pow(root, branch_length, q)
-        omega2 = omega * omega % q
+        third_branch = arithmetic.multiply(branches[..., 2, :], twiddles[1])
         output = (
-            ((first_branch + second_branch).remainder(q) + third_branch).remainder(q),
-            (
-                (first_branch + mul_mod(second_branch, omega, q)).remainder(q)
-                + mul_mod(third_branch, omega2, q)
-            ).remainder(q),
-            (
-                (first_branch + mul_mod(second_branch, omega2, q)).remainder(q)
-                + mul_mod(third_branch, omega, q)
-            ).remainder(q),
+            arithmetic.add(arithmetic.add(first_branch, second_branch), third_branch),
+            arithmetic.add(
+                arithmetic.add(first_branch, arithmetic.multiply(second_branch, omega)),
+                arithmetic.multiply(third_branch, omega_squared),
+            ),
+            arithmetic.add(
+                arithmetic.add(first_branch, arithmetic.multiply(second_branch, omega_squared)),
+                arithmetic.multiply(third_branch, omega),
+            ),
         )
     return torch.stack(output, dim=-2).reshape(*values.shape[:-1], length)
 
@@ -84,12 +96,71 @@ class NTTPlan:
             raise ValueError("dim must name an existing tensor axis")
         if values.shape[dim] != self.length:
             raise ValueError(f"expected axis length {self.length}, got {values.shape[dim]}")
-        values = residues(values, self.q).movedim(dim, -1)
+        values = residues(values, self.q)
+        return self._transform_residues(values, dim=dim, inverse=inverse)
+
+    def _transform_residues(
+        self, values: torch.Tensor, *, dim: int = -1, inverse: bool = False
+    ) -> torch.Tensor:
+        return self._kernel(values.device, dim=dim, inverse=inverse)(values)
+
+    @lru_cache(maxsize=128)  # noqa: B019 -- bounded immutable plans; cleared explicitly
+    def _kernel(
+        self, device: torch.device, *, dim: int = -1, inverse: bool = False
+    ) -> Callable[[torch.Tensor], torch.Tensor]:
+        arithmetic = arithmetic_context(self.q)
         root = pow(self.root, -1, self.q) if inverse else self.root
-        values = _dft(values, self.q, root)
-        if inverse:
-            values = mul_mod(values, pow(self.length, -1, self.q), self.q)
-        return values.movedim(-1, dim)
+        tables = stage_tables(self.q, root, self.length, str(device))
+        constants = _butterfly_constants(self.q, root, self.length)
+        normalization = pow(self.length, -1, self.q)
+
+        def kernel(values: torch.Tensor) -> torch.Tensor:
+            transformed = _dft(values.movedim(dim, -1), arithmetic, tables, constants)
+            if inverse:
+                transformed = arithmetic.multiply(transformed, normalization)
+            return transformed.movedim(-1, dim)
+
+        return kernel
+
+    def prepare(self, device: torch.device | str = "cpu") -> "NTTPlan":
+        """Warm bounded forward/inverse device caches before timed execution."""
+        device = resolve_device(device)
+        for root in (self.root, pow(self.root, -1, self.q)):
+            stage_tables(self.q, root, self.length, str(device))
+            _butterfly_constants(self.q, root, self.length)
+        return self
+
+    def compile(
+        self,
+        device: torch.device | str = "cpu",
+        *,
+        dim: int = -1,
+        inverse: bool = False,
+        backend: str = "inductor",
+    ) -> Callable[[torch.Tensor], torch.Tensor]:
+        """Create an optional fused transform with tables bound outside compiler tracing.
+
+        Compilation is lazy on the first call. Use warmup before benchmarking.
+        This is an experimental path; no GPU performance is claimed here.
+        """
+        device = resolve_device(device)
+        prepared_kernel = self._kernel(device, dim=dim, inverse=inverse)
+
+        def kernel(values: torch.Tensor) -> torch.Tensor:
+            return prepared_kernel(values.remainder(self.q))
+
+        compiled_kernel = torch.compile(kernel, backend=backend, fullgraph=True)
+
+        def transform(values: torch.Tensor) -> torch.Tensor:
+            if values.ndim == 0 or not -values.ndim <= dim < values.ndim:
+                raise ValueError("dim must name an existing tensor axis")
+            if values.shape[dim] != self.length or values.device != device:
+                raise ValueError("compiled transform input must match the plan length and device")
+            if values.dtype != torch.int64:
+                values = residues(values, self.q)
+            return compiled_kernel(values)
+
+        return transform
 
     def forward(self, values: torch.Tensor, *, dim: int = -1) -> torch.Tensor:
         return self.transform(values, dim=dim)

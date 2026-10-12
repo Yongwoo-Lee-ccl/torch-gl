@@ -10,6 +10,10 @@ the ideal containing `i²+1` and the configured X/Y/W relations. It imports neit
 PyTorch nor this package. Pytest only reads the stored JSON and compares results.
 Neither tests nor CI invoke SageMath or regenerate this file.
 
+The file is preserved unchanged. Thirteen cases test supported multiplication.
+The two historical large-modulus cases now verify rejection of moduli above the
+deliberate 30-bit single-limb limit; RNS composition belongs at a higher level.
+
 Run the standalone generator only when explicitly maintaining the vectors,
 then review and commit the resulting diff. Arithmetic tests are not evidence
 of cryptographic security.

@@ -1,6 +1,7 @@
 """Configurable, separable monic quotient ideals over Z_q[i]."""
 
 from dataclasses import dataclass, field
+from functools import cached_property
 from typing import TYPE_CHECKING
 
 import torch
@@ -162,7 +163,7 @@ class PolynomialRing:
             for axis in self.axes
         )
 
-    @property
+    @cached_property
     def transform_plans(self) -> tuple[NTTPlan | CyclotomicNTTPlan | GaussianNTTPlan, ...]:
         """Plans in variable order; apply to coefficient tensors along the matching axis."""
         plans = []

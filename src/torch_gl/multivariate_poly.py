@@ -2,14 +2,20 @@
 
 import torch
 
-from .modular import gaussian_mul, residues
+from .modular import arithmetic_context, gaussian_mul, gaussian_mul_residues, residues
 from .rings import GaussianInteger, PolynomialRing
 
 
 def _reduce(coefficients: torch.Tensor, ring: PolynomialRing) -> torch.Tensor:
     """Monic long division along each independent variable axis."""
-    result = coefficients.clone()
+    # The constructor passes an owned, normalized tensor. Canonical inputs
+    # require no long division, axis permutations, or additional copy.
+    if tuple(coefficients.shape) == ring.shape:
+        return coefficients
+    result = coefficients
     for dim, axis in enumerate(ring.axes):
+        if result.shape[dim] == axis.degree:
+            continue
         axis_coefficients = result.movedim(dim, 0).contiguous()
         degree = axis.degree
         terms = [
@@ -67,6 +73,13 @@ class MultivariatePoly:
         self._ring = ring
         self._coefficients = _reduce(residues(coefficients, ring.q), ring)
 
+    @classmethod
+    def _from_owned(cls, ring: PolynomialRing, coefficients: torch.Tensor) -> "MultivariatePoly":
+        """Take ownership of a fresh canonical arithmetic result without copying."""
+        result = object.__new__(cls)
+        result._ring, result._coefficients = ring, coefficients
+        return result
+
     @property
     def ring(self) -> PolynomialRing:
         return self._ring
@@ -96,14 +109,14 @@ class MultivariatePoly:
 
     def __add__(self, other: "MultivariatePoly | GaussianInteger") -> "MultivariatePoly":
         other = self._coerce(other)
-        return MultivariatePoly(
+        return self._from_owned(
             self.ring, (self._coefficients + other._coefficients).remainder(self.ring.q)
         )
 
     __radd__ = __add__
 
     def __neg__(self) -> "MultivariatePoly":
-        return MultivariatePoly(self.ring, (-self._coefficients).remainder(self.ring.q))
+        return self._from_owned(self.ring, (-self._coefficients).remainder(self.ring.q))
 
     def __sub__(self, other: "MultivariatePoly | GaussianInteger") -> "MultivariatePoly":
         return self + (-self._coerce(other))
@@ -112,20 +125,43 @@ class MultivariatePoly:
         return self._coerce(other) - self
 
     def __mul__(self, other: "MultivariatePoly | GaussianInteger") -> "MultivariatePoly":
+        return self.multiply(other)
+
+    def multiply(
+        self,
+        other: "MultivariatePoly | GaussianInteger",
+        *,
+        compiled: bool = False,
+        backend: str = "inductor",
+    ) -> "MultivariatePoly":
+        """Multiply with an optional full native-ring compiler kernel.
+
+        The compiled path is lazy; warm one call before timing repeated products.
+        General padded ideals use the eager convolution/reduction path.
+        """
         other = self._coerce(other)
+        if self.ring.convolution_shape == tuple(axis.degree for axis in self.ring.axes):
+            from ._multiplication import native_multiplier
+
+            kernel = native_multiplier(self.ring, self.device, backend if compiled else None)
+            return self._from_owned(self.ring, kernel(self._coefficients, other._coefficients))
+        if compiled:
+            raise ValueError("compiled multiplication requires native transforms on every axis")
         # Native transforms use the canonical basis. General ideals need
         # padding for linear convolution before monic quotient reduction.
-        padded_shape = (*self.ring.ntt_shape, 2)
-        left = torch.zeros(padded_shape, dtype=torch.int64, device=self.device)
-        right = torch.zeros_like(left)
+        operand_shape = (2, *self.ring.ntt_shape, 2)
+        operands = torch.zeros(operand_shape, dtype=torch.int64, device=self.device)
         slices = tuple(slice(0, axis.degree) for axis in self.ring.axes) + (slice(None),)
-        left[slices], right[slices] = self._coefficients, other._coefficients
+        operands[(0, *slices)] = self._coefficients
+        operands[(1, *slices)] = other._coefficients
+        arithmetic = arithmetic_context(self.ring.q)
         plans = self.ring.transform_plans
         for dim, plan in enumerate(plans):
-            left, right = plan.forward(left, dim=dim), plan.forward(right, dim=dim)
-        product = gaussian_mul(left, right, self.ring.q)
+            operands = plan._transform_residues(operands, dim=dim + 1)
+        left, right = operands.unbind(0)
+        product = gaussian_mul_residues(left, right, arithmetic)
         for dim, plan in enumerate(plans):
-            product = plan.inverse(product, dim=dim)
+            product = plan._transform_residues(product, dim=dim, inverse=True)
         support = tuple(slice(0, length) for length in self.ring.convolution_shape) + (slice(None),)
         return MultivariatePoly(self.ring, product[support])
 

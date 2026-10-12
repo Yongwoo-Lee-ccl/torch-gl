@@ -89,7 +89,7 @@ Other primes may permit padded arithmetic but not the paper's split encoding.
 The experiments in §5.2 use `p=17` and Rader's algorithm; that native transform
 is deferred in favor of powers of three as requested. Other odd prime-power
 ideals are handled by padded multiplication. Multi-prime RNS is also deferred;
-this stage handles a single prime limb up to `2^62-1`.
+this stage handles a single prime limb below `2^30`.
 
 Ordinary ring multiplication supports the paper's Hadamard product. Its
 `circledast` matrix product in §3.4 instead applies a trace with substitutions
@@ -104,5 +104,33 @@ slot conventions, and normalization.
 
 This is AI-written code for fun, reviewed by the author only very briefly.
 It is not security-proven and must never be used in a product. Arithmetic is
-not constant-time. The large-modulus path prioritizes exactness over optimized
-GPU performance. No encryption or security claims follow from arithmetic tests.
+not constant-time. GPU performance has not been measured here. No encryption or
+security claims follow from arithmetic tests.
+
+## Single-limb Montgomery arithmetic
+
+The standalone Montgomery API uses `R=2^31`, `q<2^30`, and
+`negative_inverse=-q^-1 mod R`. For canonical encoded operands, form
+
+```text
+product = left * right
+cancellation = ((product & (R-1)) * negative_inverse) & (R-1)
+reduced = (product + cancellation*q) >> 31
+result = reduced-q if reduced >= q else reduced
+```
+
+Ordinary products are below `2^60`. The cancellation multiplication is below
+`2^62`; the reduction accumulator is below `2^60+2^61`, within signed int64.
+The reduced value is below `2q`, so one conditional subtraction suffices.
+Encode by multiplying by `R² mod q` with Montgomery reduction; decode by
+multiplying by one. This does not rely on signed-overflow behavior.
+
+Normal residues are the default for transforms because small-modulus direct
+multiplication is faster in the measured CPU workloads. Tagged `MontgomeryTensor`
+objects support explicit external experiments without accidental double encoding.
+The former two-limb 60-bit path was removed; RNS composition is intentionally
+outside this component.
+
+`R=2^64` needs unsigned high-word products and carry handling. Eager Torch's
+limited unsigned support does not supply a portable implementation. A specialized
+unsigned CUDA backend may use that radix in a later measured optimization.
