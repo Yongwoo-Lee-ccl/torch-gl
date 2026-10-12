@@ -133,6 +133,55 @@ def test_configurable_variable_order_and_smaller_ring(variables):
     )
 
 
+@pytest.mark.parametrize("device", DEVICES)
+@pytest.mark.parametrize("left_scale,right_scale", [(2**40, 2**40), (2**30, 2**40)])
+@pytest.mark.parametrize(
+    "n,p,variables",
+    [
+        (4, 9, ("X", "Y", "W")),
+        (8, 27, ("X", "W")),
+        (4, 27, ("W", "Y", "X")),
+        (2, 729, ("X", "Y", "W")),
+    ],
+)
+def test_encoded_plaintext_product_decodes_to_elementwise_slot_product(
+    device, left_scale, right_scale, n, p, variables
+):
+    ring = RNSRing.for_parameters(n, p, limb_count=4, variables=variables)
+    left_encoder = MatrixEncoder(ring, scale=left_scale, device=device)
+    right_encoder = MatrixEncoder(ring, scale=right_scale, device=device)
+    product_decoder = MatrixEncoder(ring, scale=left_scale * right_scale, device=device)
+    generator = torch.Generator(device=device).manual_seed(1935)
+    left_slots = torch.randn(
+        left_encoder.slot_shape, dtype=torch.complex128, device=device, generator=generator
+    )
+    right_slots = torch.randn(
+        right_encoder.slot_shape, dtype=torch.complex128, device=device, generator=generator
+    )
+    left_encoded = left_encoder.encode(left_slots)
+    right_encoded = right_encoder.encode(right_slots)
+    # Pure plaintext polynomial multiplication: no Engine, ciphertext, or noise.
+    product = left_encoded * right_encoded
+    left_l1 = sum(abs(value) for value in left_encoded.reconstruct())
+    right_l1 = sum(abs(value) for value in right_encoded.reconstruct())
+    # Each reduced monomial contributes to at most two coefficients under Phi_p.
+    # This sufficient bound rules out aggregate-modulus wraparound for the test.
+    assert 2 * left_l1 * right_l1 < ring.modulus // 2
+    decoded = product_decoder.decode(product)
+    # Separate rounding from the embedding's algebraic multiplication property.
+    rounded_slot_product = left_encoder.decode(left_encoded) * right_encoder.decode(right_encoded)
+    torch.testing.assert_close(decoded, rounded_slot_product, atol=2e-12, rtol=2e-12)
+    coefficient_count = math.prod(ring.shape[:-1])
+    left_rounding_bound = coefficient_count / (math.sqrt(2) * left_scale)
+    right_rounding_bound = coefficient_count / (math.sqrt(2) * right_scale)
+    product_error_bound = (
+        left_slots.abs().max().item() * right_rounding_bound
+        + right_slots.abs().max().item() * left_rounding_bound
+        + left_rounding_bound * right_rounding_bound
+    )
+    assert (decoded - left_slots * right_slots).abs().max().item() <= product_error_bound + 1e-12
+
+
 def test_encoding_rejects_invalid_inputs_and_aggregate_overflow():
     ring = RNSRing.for_parameters(2, 9, limb_count=1)
     for scale in (0, -1, float("inf"), float("nan"), True):

@@ -74,3 +74,51 @@ For scaled complex matrix messages, use `MatrixEncoder.encode()` before
 encryption and `MatrixEncoder.decode()` after decryption. It implements the
 paper's Section 3.1 and uses Python integers at the RNS conversion boundary,
 with centering modulo the full aggregate Q. See [encoding](encoding.md).
+
+## Homomorphic multiplication before key switching
+
+`engine.multiply(left, right)` or `left * right` multiplies two two-component
+ciphertexts and returns `QuadraticCiphertext(c0,c1,c2)`:
+
+```text
+c0 = b0*b1
+c1 = b0*a1 + b1*a0
+c2 = a0*a1
+```
+
+`engine.decrypt(product, secret_key)` evaluates `c0+c1*s+c2*s^2`, using Horner
+evaluation `(c2*s+c1)*s+c0` to avoid separately materializing `s^2`. The same
+secret s is supplied; its decryption basis expands from `(1,s)` to `(1,s,s^2)`.
+The engine method uses its configured compilation settings. Operator `*` is eager.
+The inputs must use the same ring, device, and secret key; key identity is not
+tracked in ciphertexts, so the caller must ensure the shared secret.
+
+Scales multiply: inputs at scale Delta produce a product at scale Delta^2.
+Decode with `MatrixEncoder(ring, scale=Delta**2)`. There is no rescaling or
+relinearization here, and ciphertexts carry no scale metadata. The modulus
+product Q must accommodate coefficient growth. The decoded operation is the
+elementwise/Hadamard product of the input matrices. The paper's matrix trace
+product is a separate operation.
+
+```python
+import torch
+from torch_gl import Engine, MatrixEncoder, RNSRing
+
+ring = RNSRing.for_parameters(n=4, p=9, limb_count=4)
+engine = Engine(ring)
+encoder = MatrixEncoder(ring)  # Default Delta=2**40.
+product_decoder = MatrixEncoder(ring, scale=encoder.scale**2)
+left = torch.randn(encoder.slot_shape, dtype=torch.complex128)
+right = torch.randn(encoder.slot_shape, dtype=torch.complex128)
+left_ct = engine.encrypt(encoder.encode(left))
+right_ct = engine.encrypt(encoder.encode(right))
+product_ct = engine.multiply(left_ct, right_ct)
+recovered = product_decoder.decode(engine.decrypt(product_ct, engine.secret_key))
+print((recovered - left * right).abs().max())
+```
+
+`pytest tests/test_homomorphic_multiplication.py` verifies the component formula,
+the exact noisy decryption equation, eager/compiled paths, and encrypted
+Sage-KAT messages decoded at squared scale. The tests use four limbs and verify
+a coefficient-growth bound below Q/2, including product coefficients above int64.
+Multiplication of an already quadratic ciphertext is outside this initial API.

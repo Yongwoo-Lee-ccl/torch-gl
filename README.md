@@ -167,6 +167,8 @@ The Gaussian transform uses the split map from §5.1. See
 paper's Hadamard product. The matrix product `circledast` is a distinct trace
 operation for a later step. Binary-secret symmetric encryption and fixed RNS
 limb composition and scaled complex matrix encoding (§3.1) are implemented.
+Unrelinearized ciphertext multiplication decrypts under `(1,s,s²)` and multiplies
+the plaintext scales. See [homomorphic multiplication](docs/encryption.md#homomorphic-multiplication-before-key-switching).
 Key switching, integer matrix encoding (§4.1), RNS level management, rescaling,
 and bootstrapping are future work.
 

@@ -5,7 +5,7 @@ import math
 import torch
 
 from ._transform_tables import resolve_device
-from .ciphertext import Ciphertext
+from .ciphertext import Ciphertext, QuadraticCiphertext
 from .rings import GaussianInteger
 from .rns import RNSPoly, RNSRing
 
@@ -88,13 +88,34 @@ class Engine:
         masked_component = message + noise - secret_product
         return Ciphertext(b=masked_component, a=uniform_component)
 
-    def decrypt(self, ciphertext: Ciphertext, secret_key: RNSPoly) -> RNSPoly:
+    def multiply(self, left: Ciphertext, right: Ciphertext) -> QuadraticCiphertext:
+        """Return an unrelinearized product, using the engine's compiler settings."""
+        for ciphertext in (left, right):
+            if not isinstance(ciphertext, Ciphertext):
+                raise TypeError("multiplication requires two Ciphertext values")
+            self._check_polynomial(ciphertext.b)
+            self._check_polynomial(ciphertext.a)
+        return left.multiply(right, compiled=self.compiled, backend=self.backend)
+
+    def decrypt(self, ciphertext: Ciphertext | QuadraticCiphertext, secret_key: RNSPoly) -> RNSPoly:
         """Return the noisy message in RNS form, without rounding away its error."""
-        if not isinstance(ciphertext, Ciphertext):
-            raise TypeError("ciphertext must be a Ciphertext")
+        if not isinstance(ciphertext, (Ciphertext, QuadraticCiphertext)):
+            raise TypeError("ciphertext must be a Ciphertext or QuadraticCiphertext")
+        self._check_polynomial(secret_key)
+        if isinstance(ciphertext, QuadraticCiphertext):
+            for component in (ciphertext.c0, ciphertext.c1, ciphertext.c2):
+                self._check_polynomial(component)
+            # Horner evaluation equals c0+c1*s+c2*s^2 with two products,
+            # avoiding an extra multiplication to materialize s^2.
+            linear_term = (
+                ciphertext.c2.multiply(secret_key, compiled=self.compiled, backend=self.backend)
+                + ciphertext.c1
+            )
+            return ciphertext.c0 + linear_term.multiply(
+                secret_key, compiled=self.compiled, backend=self.backend
+            )
         self._check_polynomial(ciphertext.b)
         self._check_polynomial(ciphertext.a)
-        self._check_polynomial(secret_key)
         secret_product = ciphertext.a.multiply(
             secret_key, compiled=self.compiled, backend=self.backend
         )

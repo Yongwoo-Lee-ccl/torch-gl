@@ -1,7 +1,7 @@
 """Exact tensor polynomial arithmetic for Gentry–Lee rings."""
 
 from ._transform_tables import clear_transform_cache
-from .ciphertext import Ciphertext
+from .ciphertext import Ciphertext, QuadraticCiphertext
 from .cyclotomic import CyclotomicNTTPlan
 from .encoding import MatrixEncoder
 from .engine import Engine
@@ -21,6 +21,7 @@ from .twisted import GaussianNTTPlan
 
 __all__ = [
     "Ciphertext",
+    "QuadraticCiphertext",
     "Engine",
     "MatrixEncoder",
     "CyclotomicNTTPlan",

@@ -71,6 +71,10 @@ The frozen `tests/data/sage_encoding.json` fixture additionally checks the
 canonical inverse and direct evaluation against SageMath's 256-bit dense
 arithmetic, including exact rounded coefficients and a noisy encrypted message.
 Its generator is standalone and is never invoked by tests or CI.
+Plaintext-only tests multiply two independently encoded polynomials and check
+that decoding at the product scale matches elementwise slot multiplication.
+They cover equal and different input scales, reordered and smaller rings, and
+`p=729`, with bounds for rounding error and aggregate-modulus wraparound.
 The existing naive `10000*X` tests and saved Sage multiplication vectors are unchanged.
 The engine's current full-ring binary key is unchanged; the paper's smaller-ring
 secret embedding remains a separate feature, as documented in the encryption notes.
