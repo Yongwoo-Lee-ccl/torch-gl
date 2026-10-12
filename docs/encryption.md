@@ -15,7 +15,7 @@ other separable ideals use `RNSRing(moduli,axes)`. Limb order is part of the con
 For cyclotomic prime bases other than three, the selector also includes the
 required padded radix-2 transform length in its congruence step.
 
-Encoding uses the same integer coefficient tensor in every limb. Arithmetic
+RNS construction uses the same integer coefficient tensor in every limb. Arithmetic
 operates limb by limb; integer scaling avoids NTTs. Uniform sampling independently
 samples each prime limb, corresponding to a uniform element modulo Q under CRT.
 
@@ -69,3 +69,8 @@ Tests verify the exact ciphertext equation, exact agreement with captured noise,
 binary keys, shared residues, fresh ciphertexts, zero-noise recovery, compiled
 graph capture, approximate noise statistics, and CRT integers above int64.
 The saved SageMath KAT file remains unchanged.
+
+For scaled complex matrix messages, use `MatrixEncoder.encode()` before
+encryption and `MatrixEncoder.decode()` after decryption. It implements the
+paper's Section 3.1 and uses Python integers at the RNS conversion boundary,
+with centering modulo the full aggregate Q. See [encoding](encoding.md).

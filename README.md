@@ -166,8 +166,9 @@ The Gaussian transform uses the split map from §5.1. See
 `*` is ordinary quotient-ring multiplication, the arithmetic underlying the
 paper's Hadamard product. The matrix product `circledast` is a distinct trace
 operation for a later step. Binary-secret symmetric encryption and fixed RNS
-limb composition are implemented. Matrix encoding, key switching, RNS level
-management, rescaling, and bootstrapping are future work.
+limb composition and scaled complex matrix encoding (§3.1) are implemented.
+Key switching, integer matrix encoding (§4.1), RNS level management, rescaling,
+and bootstrapping are future work.
 
 ## RNS encryption
 
@@ -194,6 +195,32 @@ python examples/encryption.py
 pytest tests/test_rns.py tests/test_engine.py
 ```
 
+## Complex matrix encoding
+
+```python
+import torch
+from torch_gl import Engine, MatrixEncoder, RNSRing
+
+ring = RNSRing.for_parameters(n=4, p=9, limb_count=3)
+encoder = MatrixEncoder(ring, scale=2**40)
+engine = Engine(ring)
+matrices = torch.randn(encoder.slot_shape, dtype=torch.complex128)  # (6, 4, 4)
+encoded = encoder.encode(matrices)
+ciphertext = engine.encrypt(encoded)
+recovered = encoder.decode(engine.decrypt(ciphertext, engine.secret_key))
+print((recovered - matrices).abs().max())
+```
+
+The encoder uses the paper's `5**j` ordering for X/Y roots and `2**ell`
+ordering for W roots, currently for powers of three. Complex128 Torch FFTs
+interpolate the matrices; rounding produces Python integers, which are split
+into int32 RNS limbs. Decoding reconstructs Python integers, centers modulo the
+**full product Q**, then converts to floating point for evaluation and scaling.
+Coefficients may exceed an individual prime or int64. Encoding/decoding transfer
+through CPU Python integers, including when the polynomial device is CUDA.
+Floating accuracy remains limited by complex128; larger integer storage does
+not add precision. See [encoding details](docs/encoding.md).
+
 ## Tests
 
 ```sh
@@ -209,6 +236,12 @@ Thirteen multiplication cases cover both requested rings, native/padded paths,
 prime powers, and custom Gaussian ideals. The file remains unchanged; two historical
 60/62-bit cases now test rejection outside the single-limb range. **Tests never run
 SageMath or regenerate vectors.** SageMath is not a package dependency.
+
+Canonical embedding tests also read six frozen vectors from
+[tests/data/sage_encoding.json](tests/data/sage_encoding.json). SageMath generated
+these once using direct root evaluation and dense inversion with 256-bit complex
+arithmetic, independently of FFTs. Tests check exact rounded encoding coefficients,
+RNS limbs, decoding, and an encrypted encoded message.
 
 The independent [generator](scripts/generate_sage_kats.py) uses multivariate
 polynomials over `GF(q)` and ideal reduction, with `i²+1` explicit. Run it only

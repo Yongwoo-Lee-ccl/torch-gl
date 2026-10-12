@@ -3,6 +3,7 @@
 from ._transform_tables import clear_transform_cache
 from .ciphertext import Ciphertext
 from .cyclotomic import CyclotomicNTTPlan
+from .encoding import MatrixEncoder
 from .engine import Engine
 from .montgomery import (
     MONTGOMERY_RADIX,
@@ -21,6 +22,7 @@ from .twisted import GaussianNTTPlan
 __all__ = [
     "Ciphertext",
     "Engine",
+    "MatrixEncoder",
     "CyclotomicNTTPlan",
     "GaussianNTTPlan",
     "NTTPlan",
