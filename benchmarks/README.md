@@ -17,3 +17,18 @@ to restrict this component to 30-bit prime limbs.
 
 Run `scripts/benchmark_ntt.py` explicitly when collecting a new measurement.
 Ordinary pytest and CI never regenerate these results or the SageMath KATs.
+
+For `scripts/benchmark_key_switching.py --device cuda:0`, the PyTorch CUDA
+runtime must be compatible with the installed NVIDIA driver. Check
+`nvidia-smi` and `python -c 'import torch; print(torch.__version__, torch.version.cuda)'`.
+For a driver supporting CUDA 12.4, install the matching build in the project
+virtual environment:
+
+```bash
+python -m pip install 'torch==2.6.0+cu124' --extra-index-url https://download.pytorch.org/whl/cu124
+```
+
+See the [official PyTorch installation commands](https://pytorch.org/get-started/previous-versions/)
+for other CUDA builds. The key-switching benchmark checks CUDA initialization
+before writing its output, so a device initialization failure preserves an
+existing report.
