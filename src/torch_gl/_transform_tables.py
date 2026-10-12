@@ -54,8 +54,10 @@ def clear_transform_cache() -> None:
     device_powers.cache_clear()
     from ._multiplication import native_multiplier
     from .cyclotomic import CyclotomicNTTPlan
+    from .matrix import _matrix_plan
     from .ntt import NTTPlan
 
     native_multiplier.cache_clear()
+    _matrix_plan.cache_clear()
     NTTPlan._kernel.cache_clear()
     CyclotomicNTTPlan._kernel.cache_clear()

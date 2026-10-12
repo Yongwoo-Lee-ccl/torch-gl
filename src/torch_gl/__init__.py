@@ -5,6 +5,7 @@ from .ciphertext import Ciphertext, QuadraticCiphertext
 from .cyclotomic import CyclotomicNTTPlan
 from .encoding import MatrixEncoder
 from .engine import Engine
+from .matrix import MatrixNTTPlan, matrix_multiply
 from .montgomery import (
     MONTGOMERY_RADIX,
     MontgomeryTensor,
@@ -24,6 +25,8 @@ __all__ = [
     "QuadraticCiphertext",
     "Engine",
     "MatrixEncoder",
+    "MatrixNTTPlan",
+    "matrix_multiply",
     "CyclotomicNTTPlan",
     "GaussianNTTPlan",
     "NTTPlan",

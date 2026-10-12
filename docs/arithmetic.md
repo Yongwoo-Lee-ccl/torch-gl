@@ -93,7 +93,9 @@ below `2^30`; each polynomial block is stored in int32.
 
 Ordinary ring multiplication supports the paper's Hadamard product. Its
 `circledast` matrix product in §3.4 instead applies a trace with substitutions
-and contractions, so it must be implemented as a separate future operation.
+and contractions. Plaintext ordinary matrix multiplication is available through
+`matrix_multiply` in aligned NTT slots; see [matrix notes](matrix.md) for its
+coefficient contraction and the difference from normalized-adjoint `circledast`.
 
 ## Correctness evidence and limits
 

@@ -164,8 +164,10 @@ The Gaussian transform uses the split map from §5.1. See
 [implementation notes](docs/arithmetic.md) for formulas and slot ordering.
 
 `*` is ordinary quotient-ring multiplication, the arithmetic underlying the
-paper's Hadamard product. The matrix product `circledast` is a distinct trace
-operation for a later step. Binary-secret symmetric encryption and fixed RNS
+paper's Hadamard product. Plaintext `matrix_multiply` contracts matrix indices
+in NTT slots independently along W; see [matrix multiplication](docs/matrix.md).
+The paper's literal normalized-adjoint `circledast` and its encrypted variant
+remain separate steps. Binary-secret symmetric encryption and fixed RNS
 limb composition and scaled complex matrix encoding (§3.1) are implemented.
 Unrelinearized ciphertext multiplication decrypts under `(1,s,s²)` and multiplies
 the plaintext scales. See [homomorphic multiplication](docs/encryption.md#homomorphic-multiplication-before-key-switching).
