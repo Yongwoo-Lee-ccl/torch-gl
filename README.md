@@ -20,7 +20,7 @@ python -m pip install -e '.[dev]'
 
 ## Polynomial rings
 
-`MultivariatePoly` stores exact `torch.int64` coefficients in configurable
+`MultivariatePoly` stores exact `torch.int32` coefficients in configurable
 quotients of `Z_q[i]`, with formal `i² = -1`. The default ring is
 `Z_q[i][X,Y,W] / (X^n-i, Y^n-i, Phi_p(W))`. Here `n` is a power of two and
 `p` is an odd prime power. The canonical coefficient tensor has shape
@@ -87,10 +87,12 @@ For example, `q=433, n=4, p=27` uses transform shape `(4, 4, 18)` without paddin
 Native NTTs for other odd prime bases are deferred; generic arithmetic works.
 
 Moduli are **odd primes below `2^30`**, representing a single RNS limb.
-Ordinary products fit in signed int64 directly. Larger moduli belong in a future
-higher-level RNS layer. CPU and CUDA are supported; MPS lacks the required int64
-operations. The 60-bit implementation was removed after its optimized CPU NTT
-remained over four times slower than a 30-bit limb.
+Coefficients, keys, ciphertexts, noise, and twiddle tables use int32 storage.
+Montgomery products widen locally to int64 and return reduced int32 residues.
+The RNS layer composes these limbs for larger moduli. CPU and CUDA are supported;
+MPS lacks the required int64 multiplication operations. The 60-bit implementation
+was removed after its optimized CPU NTT remained over four times slower than a
+30-bit limb.
 
 Plans cache device-side twiddles and batch Gaussian/cyclotomic branches.
 `plan.prepare(device)` warms forward/inverse caches before a benchmark.
@@ -112,8 +114,10 @@ Ordinary `*` remains eager to avoid an implicit compilation delay.
 
 ## Standalone Montgomery functions
 
-The optional Montgomery API uses **`R = 2^31`**, with a single reduction limb.
-The default NTT uses normal residues, which benchmark faster on this CPU.
+The Montgomery API uses **`R = 2^31`**, with a single reduction limb.
+Transforms and native multiplication stay in int32 Montgomery form internally,
+encoding once at entry and decoding once at exit. Public polynomial coefficients
+remain in normal form. Only multiplication/reduction uses temporary int64 values.
 Montgomery values carry their modulus and representation tag; raw integer tensors
 cannot reveal whether they are encoded.
 
@@ -125,7 +129,7 @@ from torch_gl import (
     montgomery_mul,
 )
 
-coefficients = torch.tensor([1, 2, -3], dtype=torch.int64)
+coefficients = torch.tensor([1, 2, -3], dtype=torch.int32)
 encoded = to_montgomery_form(coefficients, q=754974721)
 assert is_montgomery_form(encoded)
 product = montgomery_mul(encoded, encoded)

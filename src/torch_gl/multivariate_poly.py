@@ -23,7 +23,7 @@ def _reduce(coefficients: torch.Tensor, ring: PolynomialRing) -> torch.Tensor:
                 modulus_index,
                 torch.tensor(
                     [real % ring.q, imag % ring.q],
-                    dtype=torch.int64,
+                    dtype=torch.int32,
                     device=axis_coefficients.device,
                 ),
             )
@@ -40,7 +40,7 @@ def _reduce(coefficients: torch.Tensor, ring: PolynomialRing) -> torch.Tensor:
         if axis_coefficients.shape[0] < degree:
             padding = torch.zeros(
                 (degree - axis_coefficients.shape[0], *axis_coefficients.shape[1:]),
-                dtype=torch.int64,
+                dtype=torch.int32,
                 device=axis_coefficients.device,
             )
             axis_coefficients = torch.cat((axis_coefficients, padding), dim=0)
@@ -49,7 +49,7 @@ def _reduce(coefficients: torch.Tensor, ring: PolynomialRing) -> torch.Tensor:
 
 
 class MultivariatePoly:
-    """A canonical polynomial with coefficients in [0, q).
+    """An int32 polynomial with coefficients in [0, q).
 
     Input shape is (degree_X, degree_Y, ..., 2) in ring axis order.
     The final channels are real and imaginary. Arbitrary positive lengths
@@ -150,11 +150,12 @@ class MultivariatePoly:
         # Native transforms use the canonical basis. General ideals need
         # padding for linear convolution before monic quotient reduction.
         operand_shape = (2, *self.ring.ntt_shape, 2)
-        operands = torch.zeros(operand_shape, dtype=torch.int64, device=self.device)
+        operands = torch.zeros(operand_shape, dtype=torch.int32, device=self.device)
         slices = tuple(slice(0, axis.degree) for axis in self.ring.axes) + (slice(None),)
         operands[(0, *slices)] = self._coefficients
         operands[(1, *slices)] = other._coefficients
         arithmetic = arithmetic_context(self.ring.q)
+        operands = arithmetic.encode(operands)
         plans = self.ring.transform_plans
         for dim, plan in enumerate(plans):
             operands = plan._transform_residues(operands, dim=dim + 1)
@@ -162,6 +163,7 @@ class MultivariatePoly:
         product = gaussian_mul_residues(left, right, arithmetic)
         for dim, plan in enumerate(plans):
             product = plan._transform_residues(product, dim=dim, inverse=True)
+        product = arithmetic.decode(product)
         support = tuple(slice(0, length) for length in self.ring.convolution_shape) + (slice(None),)
         return MultivariatePoly(self.ring, product[support])
 

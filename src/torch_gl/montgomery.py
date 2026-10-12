@@ -22,9 +22,14 @@ def _montgomery_product(
     left: torch.Tensor, right: torch.Tensor | int, q: int, negative_inverse: int
 ) -> torch.Tensor:
     """Return left*right*R^-1 mod q for canonical operands in [0,q)."""
-    product = left * right
+    # Stored operands are int32. Only the reduction's local intermediates
+    # are widened; fused compiler kernels can keep these in registers.
+    left_wide = left.to(torch.int64)
+    right_wide = right.to(torch.int64) if isinstance(right, torch.Tensor) else right
+    product = left_wide * right_wide
     cancellation = ((product & _RADIX_MASK) * negative_inverse) & _RADIX_MASK
-    reduced = (product + cancellation * q) >> _RADIX_BITS
+    # REDC is below 2q < 2**31, so even the final correction uses int32.
+    reduced = ((product + cancellation * q) >> _RADIX_BITS).to(torch.int32)
     return torch.where(reduced >= q, reduced - q, reduced)
 
 
@@ -106,7 +111,7 @@ def to_montgomery_form(values: torch.Tensor, q: int) -> MontgomeryTensor:
 
 
 def to_normal_form(values: MontgomeryTensor) -> torch.Tensor:
-    """Decode a tagged Montgomery tensor into canonical torch.int64 residues."""
+    """Decode a tagged Montgomery tensor into canonical torch.int32 residues."""
     if not is_montgomery_form(values):
         raise TypeError("values must be a MontgomeryTensor")
     return montgomery_context(values.q).decode(values._values)

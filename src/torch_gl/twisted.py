@@ -23,8 +23,8 @@ class GaussianNTTPlan:
 
     The final tensor axis stores (real, imaginary). The two split branches
     share one batched radix-2 transform. The inverse-root branch is obtained
-    through a frequency permutation. Both branches use exact normal-form
-    arithmetic within a single 30-bit prime limb.
+    through a frequency permutation. Both branches use int32 Montgomery
+    residues internally and normal-form int32 values at public boundaries.
     """
 
     q: int
@@ -46,8 +46,9 @@ class GaussianNTTPlan:
             raise ValueError("the final axis must be Gaussian channels, not the transform axis")
         if values.shape[dim] != self.length:
             raise ValueError(f"expected variable axis length {self.length}")
-        normalized = residues(values, self.q)
-        return self._transform_residues(normalized, dim=dim, inverse=inverse)
+        arithmetic = arithmetic_context(self.q)
+        normalized = arithmetic.encode(residues(values, self.q))
+        return arithmetic.decode(self._transform_residues(normalized, dim=dim, inverse=inverse))
 
     def _transform_residues(
         self, values: torch.Tensor, *, dim: int = -2, inverse: bool = False

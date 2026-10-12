@@ -203,9 +203,9 @@ class PolynomialRing:
         self, value: GaussianInteger, *, device: torch.device | str = "cpu"
     ) -> "MultivariatePoly":
         real, imag = _pair(value)
-        coefficients = torch.zeros(self.shape, dtype=torch.int64, device=device)
+        coefficients = torch.zeros(self.shape, dtype=torch.int32, device=device)
         coefficients[(0,) * len(self.axes)] = torch.tensor(
-            [real % self.q, imag % self.q], dtype=torch.int64, device=device
+            [real % self.q, imag % self.q], dtype=torch.int32, device=device
         )
         return self.polynomial(coefficients)
 
@@ -224,7 +224,7 @@ class PolynomialRing:
         axis = names.index(name)
         shape = list(self.shape)
         shape[axis] = max(2, shape[axis])
-        coefficients = torch.zeros(shape, dtype=torch.int64, device=device)
+        coefficients = torch.zeros(shape, dtype=torch.int32, device=device)
         index = [0] * len(shape)
         index[axis] = 1
         coefficients[tuple(index)] = 1

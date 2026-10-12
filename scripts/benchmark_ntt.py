@@ -86,7 +86,9 @@ def main():
         ]
         for kind, plan, shape, dim in plans:
             plan.prepare(device)
-            coefficients = torch.randint(args.q, shape, generator=generator).to(device)
+            coefficients = torch.randint(args.q, shape, dtype=torch.int32, generator=generator).to(
+                device
+            )
             assert torch.equal(
                 plan.inverse(plan.forward(coefficients, dim=dim), dim=dim), coefficients
             )
@@ -112,8 +114,10 @@ def main():
                     "compiled": compiled_ntt,
                 }
             )
-        left = torch.randint(args.q, (batch_size, 256), generator=generator).to(device)
-        right = torch.randint(args.q, left.shape, generator=generator).to(device)
+        left = torch.randint(args.q, (batch_size, 256), dtype=torch.int32, generator=generator).to(
+            device
+        )
+        right = torch.randint(args.q, left.shape, dtype=torch.int32, generator=generator).to(device)
         encoded_left, encoded_right = (
             to_montgomery_form(left, args.q),
             to_montgomery_form(right, args.q),
@@ -160,6 +164,7 @@ def main():
         "cpu_threads": torch.get_num_threads(),
         "q": args.q,
         "q_bits": args.q.bit_length(),
+        "storage_dtype": "torch.int32",
         "compiled": args.compile,
         "warmup": args.warmup,
         "repeats": args.repeats,

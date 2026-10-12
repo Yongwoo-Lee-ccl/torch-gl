@@ -14,6 +14,7 @@ from ._number_theory import (
     odd_prime_power,
 )
 from ._transform_tables import resolve_device
+from .modular import mul_mod
 from .multivariate_poly import MultivariatePoly
 from .rings import GaussianInteger, PolynomialRing, QuotientAxis
 
@@ -141,7 +142,7 @@ class RNSRing:
             MultivariatePoly._from_owned(
                 ring,
                 torch.randint(
-                    ring.q, ring.shape, dtype=torch.int64, device=device, generator=generator
+                    ring.q, ring.shape, dtype=torch.int32, device=device, generator=generator
                 ),
             )
             for ring in self.rings
@@ -223,7 +224,7 @@ class RNSPoly:
                 tuple(
                     MultivariatePoly._from_owned(
                         limb.ring,
-                        (limb._coefficients * (other % limb.ring.q)).remainder(limb.ring.q),
+                        mul_mod(limb._coefficients, other % limb.ring.q, limb.ring.q),
                     )
                     for limb in self.limbs
                 ),
@@ -250,7 +251,7 @@ class RNSPoly:
         )
 
     def centered_coefficients(self) -> torch.Tensor:
-        """Fast signed lift for coefficients lying within half the first prime.
+        """Fast signed int32 lift for coefficients lying within half the first prime.
 
         Verify consistency against every limb, so the returned small integers
         are also the exact centered CRT representatives. For general large

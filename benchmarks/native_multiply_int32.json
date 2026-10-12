@@ -1,0 +1,18 @@
+{
+  "n": 128,
+  "p": 243,
+  "q": 541582849,
+  "storage_dtype": "torch.int32",
+  "warmups": 3,
+  "runs": 10,
+  "average_seconds": 0.18704654600587672,
+  "polynomial_bytes": 21233664,
+  "torch_version": "2.14.1",
+  "platform": "macOS-26.5.1-arm64-arm-64bit-Mach-O",
+  "device": "cpu",
+  "cpu_threads": 4,
+  "compiled": true,
+  "backend": "inductor",
+  "operand": "dense polynomial times X*Y*W",
+  "independent_coefficient_oracle_passed": true
+}

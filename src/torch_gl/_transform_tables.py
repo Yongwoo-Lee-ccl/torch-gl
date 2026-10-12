@@ -14,7 +14,7 @@ def resolve_device(device: torch.device | str) -> torch.device:
     if device.type == "cuda":
         index = torch.cuda.current_device() if device.index is None else device.index
         return torch.device("cuda", index)
-    raise ValueError("exact int64 arithmetic supports CPU and CUDA devices only")
+    raise ValueError("exact integer arithmetic supports CPU and CUDA devices only")
 
 
 @lru_cache(maxsize=256)
@@ -31,7 +31,7 @@ def device_powers(q: int, roots: tuple[int, ...], length: int, device: str) -> t
     rows = [
         tuple(arithmetic.constant(value) for value in powers(q, root, length)) for root in roots
     ]
-    return torch.tensor(rows, dtype=torch.int64, device=device)
+    return torch.tensor(rows, dtype=torch.int32, device=device)
 
 
 @lru_cache(maxsize=128)

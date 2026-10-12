@@ -2,7 +2,7 @@
 
 `RNSRing` defines a common polynomial basis over `Q=product(moduli)`.
 `RNSPoly` stores a `MultivariatePoly` for each distinct prime modulus, with
-identical axes and a common device. Limbs stay below `2^30`; multiplication
+identical axes and a common device. Int32 limbs stay below `2^30`; multiplication
 by the aggregate modulus never occurs in Torch int64.
 
 ## Prime selection and representation
@@ -19,7 +19,7 @@ Encoding uses the same integer coefficient tensor in every limb. Arithmetic
 operates limb by limb; integer scaling avoids NTTs. Uniform sampling independently
 samples each prime limb, corresponding to a uniform element modulo Q under CRT.
 
-`centered_coefficients()` returns a signed int64 tensor for coefficients within
+`centered_coefficients()` returns a signed int32 tensor for coefficients within
 half the first prime. It checks agreement with all other limbs, so it does not
 silently assume that range. For arbitrary values, `reconstruct()` performs exact
 CPU CRT reconstruction with Python integers and returns a flat tuple in C order.

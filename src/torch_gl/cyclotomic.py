@@ -42,8 +42,9 @@ class CyclotomicNTTPlan:
             raise ValueError("dim must name an existing tensor axis")
         if values.shape[dim] != self.length:
             raise ValueError(f"expected phi(p) = {self.length} coefficients/slots")
-        normalized = residues(values, self.q)
-        return self._transform_residues(normalized, dim=dim, inverse=inverse)
+        arithmetic = arithmetic_context(self.q)
+        normalized = arithmetic.encode(residues(values, self.q))
+        return arithmetic.decode(self._transform_residues(normalized, dim=dim, inverse=inverse))
 
     def _transform_residues(
         self, values: torch.Tensor, *, dim: int = -1, inverse: bool = False
@@ -59,7 +60,8 @@ class CyclotomicNTTPlan:
         plan = NTTPlan(self.q, block_length, pow(self.root, 3, self.q))
         branch_kernel = plan._kernel(device, inverse=inverse)
         omega = pow(self.root, block_length, self.q)
-        inverse_difference = pow((omega - omega * omega) % self.q, -1, self.q)
+        encoded_omega = arithmetic.constant(omega)
+        inverse_difference = arithmetic.constant(pow((omega - omega * omega) % self.q, -1, self.q))
         roots = tuple(
             pow(self.root, -root_class if inverse else root_class, self.q) for root_class in (1, 2)
         )
@@ -75,7 +77,7 @@ class CyclotomicNTTPlan:
                 upper = arithmetic.multiply(
                     arithmetic.subtract(first_branch, second_branch), inverse_difference
                 )
-                lower = arithmetic.subtract(first_branch, arithmetic.multiply(upper, omega))
+                lower = arithmetic.subtract(first_branch, arithmetic.multiply(upper, encoded_omega))
                 output = torch.stack((lower, upper), dim=-2)
             else:
                 lower, upper = coefficients[..., :block_length], coefficients[..., block_length:]

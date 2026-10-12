@@ -45,7 +45,7 @@ class Engine:
         self._generator = generator
         if secret_key is None:
             coefficients = torch.randint(
-                2, ring.shape, dtype=torch.int64, device=self.device, generator=generator
+                2, ring.shape, dtype=torch.int32, device=self.device, generator=generator
             )
             secret_key = ring.polynomial(coefficients)
         self._check_polynomial(secret_key)
@@ -69,7 +69,7 @@ class Engine:
             torch.empty(self.ring.shape, dtype=torch.float32, device=self.device)
             .normal_(mean=0, std=self.noise_std, generator=self._generator)
             .round_()
-            .to(torch.int64)
+            .to(torch.int32)
         )
 
     def encrypt(self, message: RNSPoly | torch.Tensor | GaussianInteger) -> Ciphertext:

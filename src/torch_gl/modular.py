@@ -1,13 +1,16 @@
-"""Exact single-limb arithmetic on canonical torch.int64 residues.
+"""Int32 residue storage, with local int64 intermediates in Montgomery products.
 
-Internal operands lie in [0,q), with q<2**30. Ordinary products fit
-signed int64 directly. Larger moduli belong in a higher-level RNS layer.
+Internal operands lie in [0,q), with q<2**30. Addition and subtraction
+fit signed int32. Transform arithmetic stays in Montgomery form; only
+public boundaries convert. Larger moduli belong in a higher-level RNS layer.
 """
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from functools import lru_cache
 
 import torch
+
+from .montgomery import MontgomeryContext, montgomery_context
 
 _INTEGER_DTYPES = {torch.int8, torch.int16, torch.int32, torch.int64, torch.uint8}
 
@@ -16,12 +19,20 @@ def residues(value: torch.Tensor, q: int) -> torch.Tensor:
     if value.dtype not in _INTEGER_DTYPES:
         raise TypeError("coefficients must use an integer dtype (not bool, float, or complex)")
     if value.device.type not in {"cpu", "cuda"}:
-        raise ValueError("exact int64 arithmetic supports CPU and CUDA devices only")
-    return value.to(dtype=torch.int64).remainder(q)
+        raise ValueError("exact integer arithmetic supports CPU and CUDA devices only")
+    # Reduce before narrowing: arbitrary signed int64 input must not truncate.
+    normalized_input = value if value.dtype in {torch.int32, torch.int64} else value.to(torch.int32)
+    return normalized_input.remainder(q).to(dtype=torch.int32)
 
 
 def mul_mod(left: torch.Tensor, right: torch.Tensor | int, q: int) -> torch.Tensor:
-    return (left * right).remainder(q)
+    context = montgomery_context(q)
+    encoded_right = (
+        context.encode(right)
+        if isinstance(right, torch.Tensor)
+        else (context.encode_integer(right))
+    )
+    return context.multiply(left, encoded_right)
 
 
 def add_mod(left: torch.Tensor, right: torch.Tensor | int, q: int) -> torch.Tensor:
@@ -36,15 +47,25 @@ def sub_mod(left: torch.Tensor, right: torch.Tensor | int, q: int) -> torch.Tens
 
 @dataclass(frozen=True)
 class ResidueArithmetic:
-    """Normal-form arithmetic shared by an entire transform or product."""
+    """Montgomery-form int32 arithmetic shared by an entire transform or product."""
 
     q: int
+    context: MontgomeryContext = field(init=False, repr=False, compare=False)
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "context", montgomery_context(self.q))
 
     def constant(self, value: int) -> int:
-        return value % self.q
+        return self.context.encode_integer(value)
+
+    def encode(self, values: torch.Tensor) -> torch.Tensor:
+        return self.context.encode(values)
+
+    def decode(self, values: torch.Tensor) -> torch.Tensor:
+        return self.context.decode(values)
 
     def multiply(self, left: torch.Tensor, right: torch.Tensor | int) -> torch.Tensor:
-        return (left * right).remainder(self.q)
+        return self.context.multiply(left, right)
 
     def add(self, left: torch.Tensor, right: torch.Tensor | int) -> torch.Tensor:
         if left.device.type == "cpu":
@@ -65,7 +86,8 @@ def arithmetic_context(q: int) -> ResidueArithmetic:
 def gaussian_mul(left: torch.Tensor, right: torch.Tensor, q: int) -> torch.Tensor:
     """Multiply (..., 2) coefficient pairs using i**2 = -1."""
     arithmetic = arithmetic_context(q)
-    return gaussian_mul_residues(left, right, arithmetic)
+    encoded = gaussian_mul_residues(arithmetic.encode(left), arithmetic.encode(right), arithmetic)
+    return arithmetic.decode(encoded)
 
 
 def gaussian_mul_residues(

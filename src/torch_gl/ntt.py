@@ -96,8 +96,9 @@ class NTTPlan:
             raise ValueError("dim must name an existing tensor axis")
         if values.shape[dim] != self.length:
             raise ValueError(f"expected axis length {self.length}, got {values.shape[dim]}")
-        values = residues(values, self.q)
-        return self._transform_residues(values, dim=dim, inverse=inverse)
+        arithmetic = arithmetic_context(self.q)
+        values = arithmetic.encode(residues(values, self.q))
+        return arithmetic.decode(self._transform_residues(values, dim=dim, inverse=inverse))
 
     def _transform_residues(
         self, values: torch.Tensor, *, dim: int = -1, inverse: bool = False
@@ -112,7 +113,7 @@ class NTTPlan:
         root = pow(self.root, -1, self.q) if inverse else self.root
         tables = stage_tables(self.q, root, self.length, str(device))
         constants = _butterfly_constants(self.q, root, self.length)
-        normalization = pow(self.length, -1, self.q)
+        normalization = arithmetic.constant(pow(self.length, -1, self.q))
 
         def kernel(values: torch.Tensor) -> torch.Tensor:
             transformed = _dft(values.movedim(dim, -1), arithmetic, tables, constants)
@@ -144,10 +145,12 @@ class NTTPlan:
         This is an experimental path; no GPU performance is claimed here.
         """
         device = resolve_device(device)
+        arithmetic = arithmetic_context(self.q)
         prepared_kernel = self._kernel(device, dim=dim, inverse=inverse)
 
         def kernel(values: torch.Tensor) -> torch.Tensor:
-            return prepared_kernel(values.remainder(self.q))
+            encoded = arithmetic.encode(values.remainder(self.q))
+            return arithmetic.decode(prepared_kernel(encoded))
 
         compiled_kernel = torch.compile(kernel, backend=backend, fullgraph=True)
 
@@ -156,7 +159,7 @@ class NTTPlan:
                 raise ValueError("dim must name an existing tensor axis")
             if values.shape[dim] != self.length or values.device != device:
                 raise ValueError("compiled transform input must match the plan length and device")
-            if values.dtype != torch.int64:
+            if values.dtype != torch.int32:
                 values = residues(values, self.q)
             return compiled_kernel(values)
 

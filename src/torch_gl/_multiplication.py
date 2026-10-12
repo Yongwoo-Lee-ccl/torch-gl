@@ -50,14 +50,17 @@ def native_multiplier(ring, device: torch.device, backend: str | None = None):
             (shared_plan._kernel(device, dim=axis_index, inverse=True), inverse_twist)
         )
     forward_steps, inverse_steps = tuple(forward_steps), tuple(reversed(inverse_steps))
-    inverse_two = pow(2, -1, ring.q)
-    inverse_two_imaginary = pow(2 * imaginary_root, -1, ring.q) if imaginary_root else None
+    inverse_two = arithmetic.constant(pow(2, -1, ring.q))
+    encoded_imaginary = arithmetic.constant(imaginary_root) if imaginary_root is not None else None
+    inverse_two_imaginary = (
+        arithmetic.constant(pow(2 * imaginary_root, -1, ring.q)) if imaginary_root else None
+    )
 
     def kernel(left: torch.Tensor, right: torch.Tensor) -> torch.Tensor:
-        operands = torch.stack((left, right), dim=0)
+        operands = arithmetic.encode(torch.stack((left, right), dim=0))
         if imaginary_root is not None:
             real, imag = operands.unbind(-1)
-            component = arithmetic.multiply(imag, imaginary_root)
+            component = arithmetic.multiply(imag, encoded_imaginary)
             operands = torch.stack(
                 (arithmetic.add(real, component), arithmetic.subtract(real, component)), dim=-1
             )
@@ -82,6 +85,6 @@ def native_multiplier(ring, device: torch.device, backend: str | None = None):
                 arithmetic.subtract(positive, negative), inverse_two_imaginary
             )
             product = torch.stack((real, imag), dim=-1)
-        return product
+        return arithmetic.decode(product)
 
     return torch.compile(kernel, backend=backend, fullgraph=True) if backend else kernel

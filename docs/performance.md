@@ -2,8 +2,12 @@
 
 The arithmetic layer deliberately handles prime moduli below `2^30`.
 Larger ciphertext moduli should use a higher-level RNS representation.
-This keeps ordinary scalar products below `2^60`, so signed int64 multiplication
-is exact without multiword arithmetic.
+Stored coefficients and tables are int32, halving their resident tensor memory
+relative to the original int64 layout. Scalar products remain below `2^60`.
+Montgomery multiplication uses local int64 intermediates and narrows its reduced
+result back to int32. Transforms encode once, retain Montgomery form internally,
+and decode at their public boundaries. Compiled kernels can keep wide temporaries
+in registers; eager Torch materializes temporary tensors.
 
 ## Why the 60-bit path was removed
 
@@ -74,12 +78,20 @@ the selected device and explicit synchronization. Table preparation and compilat
 are outside steady-state timings. The script verifies transform round trips and
 compiled outputs before recording performance. SageMath is never invoked.
 
-Small batches can be dominated by Python and compiler dispatch overhead; a
-compiled path is not necessarily faster for every shape. Eager Montgomery
-multiplication is slower than normal multiplication in these CPU measurements,
-so normal form remains the default. Fused Montgomery multiplication can be
-competitive, but conversion costs and full transform performance must also be
-measured before changing that default.
+These saved timing reports describe the earlier int64 storage implementation.
+They remain historical measurements rather than benchmarks of the current int32
+Montgomery pipeline. Small batches can be dominated by Python and compiler
+dispatch overhead; a compiled path is not necessarily faster for every shape.
+Fresh measurements should include encoding/decoding and full transform costs.
+
+The current int32 pipeline was checked on a dense polynomial times `X*Y*W`,
+using independent coefficient shifts and quotient reduction as the oracle.
+At `n=128`, `p=243`, `q=541582849`, three warmups followed by ten compiled CPU
+products averaged 0.187 s. Each polynomial occupied 21,233,664 bytes, compared
+with 42,467,328 bytes for int64 storage. The earlier compiled int64 measurement
+averaged 0.274 s. These are individual CPU measurements, not GPU performance
+claims or a guarantee for other workloads. Metadata is saved in
+[`benchmarks/native_multiply_int32.json`](../benchmarks/native_multiply_int32.json).
 
 ## GPU limits
 

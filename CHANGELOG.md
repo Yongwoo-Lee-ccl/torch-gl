@@ -2,6 +2,9 @@
 
 ## 0.1.0
 
+- Store polynomial/RNS coefficients, keys, ciphertexts, noise, and NTT tables in int32.
+- Keep transforms in Montgomery form and widen only local products to int64.
+
 - Add RNS polynomial blocks, compatible prime selection, and exact CRT export.
 - Add a binary-secret engine with rounded Gaussian noise and `(b,a)` ciphertexts.
 - Test encryption/decryption of `10000`, `10000*X`, `10000*W`, and `10000*Y`.

@@ -95,7 +95,7 @@ def test_rounded_gaussian_statistics():
     ring = RNSRing.for_parameters(32, 9, limb_count=1)
     engine = Engine(ring, generator=torch.Generator().manual_seed(6))
     noise = engine._sample_noise()
-    assert noise.dtype == torch.int64
+    assert noise.dtype == torch.int32
     assert abs(float(noise.float().mean())) < 0.15
     assert 3.0 < float(noise.float().std()) < 3.4
 

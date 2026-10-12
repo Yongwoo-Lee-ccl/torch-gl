@@ -88,8 +88,8 @@ These enable native X/Y transforms and the native power-of-three W transform.
 Other primes may permit padded arithmetic but not the paper's split encoding.
 The experiments in §5.2 use `p=17` and Rader's algorithm; that native transform
 is deferred in favor of powers of three as requested. Other odd prime-power
-ideals are handled by padded multiplication. Multi-prime RNS is also deferred;
-this stage handles a single prime limb below `2^30`.
+ideals are handled by padded multiplication. The RNS layer composes prime limbs
+below `2^30`; each polynomial block is stored in int32.
 
 Ordinary ring multiplication supports the paper's Hadamard product. Its
 `circledast` matrix product in §3.4 instead applies a trace with substitutions
@@ -125,11 +125,12 @@ The reduced value is below `2q`, so one conditional subtraction suffices.
 Encode by multiplying by `R² mod q` with Montgomery reduction; decode by
 multiplying by one. This does not rely on signed-overflow behavior.
 
-Normal residues are the default for transforms because small-modulus direct
-multiplication is faster in the measured CPU workloads. Tagged `MontgomeryTensor`
-objects support explicit external experiments without accidental double encoding.
-The former two-limb 60-bit path was removed; RNS composition is intentionally
-outside this component.
+All stored tensor residues use int32. Montgomery products widen operands locally
+to int64, then narrow the REDC result, which is below `2q<2^31`, before its final
+conditional subtraction. Native transforms and multiplication encode once and
+remain in Montgomery form until the final decode. Public polynomial coefficients
+are normal residues; tagged `MontgomeryTensor` objects expose explicit conversions.
+The RNS layer composes the former large-modulus functionality from small limbs.
 
 `R=2^64` needs unsigned high-word products and carry handling. Eager Torch's
 limited unsigned support does not supply a portable implementation. A specialized

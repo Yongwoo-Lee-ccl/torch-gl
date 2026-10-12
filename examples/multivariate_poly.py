@@ -5,7 +5,7 @@ import torch
 from torch_gl import MultivariatePoly, PolynomialRing
 
 ring = PolynomialRing.multivariate_poly(q=433, n=4, p=27)
-coefficients = torch.arange(4 * 4 * 18 * 2, dtype=torch.int64).reshape(ring.shape)
+coefficients = torch.arange(4 * 4 * 18 * 2, dtype=torch.int32).reshape(ring.shape)
 polynomial = MultivariatePoly(ring, coefficients)
 product = polynomial * polynomial
 print(f"Coefficient shape: {ring.shape}; transform shape: {ring.ntt_shape}")

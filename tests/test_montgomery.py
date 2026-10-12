@@ -27,6 +27,8 @@ def test_conversion_and_product_against_python_integers(q, device):
     left, right = left.to(device), right.to(device)
     encoded_left = to_montgomery_form(left, q)
     encoded_right = to_montgomery_form(right, q)
+    assert encoded_left.values.dtype == torch.int32
+    assert to_normal_form(encoded_left).dtype == torch.int32
     assert MONTGOMERY_RADIX == 1 << 31
     assert encoded_left.values.cpu().tolist() == [
         value * MONTGOMERY_RADIX % q for value in left.cpu().tolist()
