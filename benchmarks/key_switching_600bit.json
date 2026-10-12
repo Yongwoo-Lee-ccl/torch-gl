@@ -50,14 +50,54 @@
   "operations": {
     "homomorphic_matrix_multiplication_before_switching": {
       "seconds": [
-        376.51536324998597
+        376.57446437497856
       ],
-      "average_seconds": 376.51536324998597
+      "average_seconds": 376.57446437497856
+    },
+    "matrix_relinearization_two_switch_big": {
+      "seconds": [
+        226.9351862919866
+      ],
+      "average_seconds": 226.9351862919866
     }
   },
-  "input_setup_seconds": 51.17015487502795,
-  "evaluation_key_setup_seconds": 177.34924166597193,
+  "input_setup_seconds": 52.98763799999142,
+  "evaluation_key_setup_seconds": 179.2725746660144,
   "evaluation_key_bytes": 10192317104,
-  "interruption_reason": "User requested stopping the benchmark to run it on another machine.",
-  "correctness": "Large-parameter decryption check was not reached; smaller correctness suite passed."
+  "correctness": {
+    "all_limb_consistent_small_CRT_error": true,
+    "max_absolute_switching_error": 83859,
+    "checked_coefficients": 5308416
+  },
+  "memory_observations": {
+    "source": "vm_stat",
+    "scope": "System-wide counters; includes other applications, not isolated to the benchmark process.",
+    "start": {
+      "page_size_bytes": 16384,
+      "swapins_pages": 1808434,
+      "swapouts_pages": 2994126,
+      "compressor_physical_pages": 214748
+    },
+    "after_key_setup": {
+      "page_size_bytes": 16384,
+      "swapins_pages": 1808842,
+      "swapouts_pages": 2994126,
+      "compressor_physical_pages": 305165
+    },
+    "during_matrix_multiplication": {
+      "page_size_bytes": 16384,
+      "swapins_pages": 1819687,
+      "swapouts_pages": 3068506,
+      "compressor_physical_pages": 399290
+    },
+    "after_completion": {
+      "page_size_bytes": 16384,
+      "swapins_pages": 1823158,
+      "swapouts_pages": 3068506,
+      "compressor_physical_pages": 228377
+    },
+    "swapout_bytes_increase": 1218641920,
+    "swapin_bytes_increase": 241238016
+  },
+  "temporary_key_files_removed": true
 }
