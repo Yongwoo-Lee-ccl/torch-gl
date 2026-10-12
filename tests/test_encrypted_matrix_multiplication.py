@@ -9,6 +9,7 @@ from torch_gl import (
     MatrixEncoder,
     MatrixProductCiphertext,
     RNSRing,
+    create_secret_key,
     matrix_multiply,
     matrix_transpose,
 )
@@ -28,6 +29,9 @@ def test_encrypted_matrix_product_with_small_secret_and_transpose(
     ring = RNSRing.for_parameters(n, p, limb_count=4, variables=variables)
     generator = torch.Generator(device=device).manual_seed(1935)
     engine = Engine(ring, noise_std=noise_std, device=device, generator=generator)
+    secret_key = create_secret_key(
+        ring, generator=torch.Generator(device=engine.device).manual_seed((1935) + 100000)
+    )
     encoder = MatrixEncoder(ring, device=device)
     product_decoder = MatrixEncoder(ring, scale=encoder.scale**2, device=device)
     left = torch.randn(
@@ -37,7 +41,10 @@ def test_encrypted_matrix_product_with_small_secret_and_transpose(
         encoder.slot_shape, dtype=torch.complex128, device=device, generator=generator
     )
     left_encoded, right_encoded = encoder.encode(left), encoder.encode(right)
-    left_ct, right_ct = engine.encrypt(left_encoded), engine.encrypt(right_encoded)
+    left_ct, right_ct = (
+        engine.encrypt(left_encoded, secret_key),
+        engine.encrypt(right_encoded, secret_key),
+    )
     product = engine.matrix_multiply(left_ct, right_ct)
     assert isinstance(product, MatrixProductCiphertext)
     assert [field.name for field in fields(product)] == ["c00", "c10", "c01", "c11"]
@@ -45,17 +52,17 @@ def test_encrypted_matrix_product_with_small_secret_and_transpose(
     assert product.c10 == matrix_multiply(left_ct.a, matrix_transpose(right_ct.b))
     assert product.c01 == matrix_multiply(left_ct.b, matrix_transpose(right_ct.a))
     assert product.c11 == matrix_multiply(left_ct.a, matrix_transpose(right_ct.a))
-    secret_X = engine.secret_key
+    secret_X = engine._embed_secret_key(secret_key)
     secret_Y = matrix_transpose(secret_X)
     assert secret_X != secret_Y
     Y_dim = variables.index("Y")
     assert not bool(secret_X.centered_coefficients().narrow(Y_dim, 1, n - 1).any())
-    assert tuple(axis.name for axis in engine.small_secret_key.ring.axes) == tuple(
+    assert tuple(axis.name for axis in secret_key.ring.axes) == tuple(
         variable for variable in variables if variable != "Y"
     )
     assert torch.equal(
         secret_X.centered_coefficients().select(Y_dim, 0),
-        engine.small_secret_key.centered_coefficients(),
+        secret_key.centered_coefficients(),
     )
     explicit_decryption = (
         product.c00
@@ -63,10 +70,10 @@ def test_encrypted_matrix_product_with_small_secret_and_transpose(
         + product.c01 * secret_Y
         + product.c11 * (secret_X * secret_Y)
     )
-    decrypted = engine.decrypt(product, engine.small_secret_key)
+    decrypted = engine.decrypt(product, secret_key)
     assert decrypted == explicit_decryption
-    left_decrypted = engine.decrypt(left_ct, engine.small_secret_key)
-    right_decrypted = engine.decrypt(right_ct, engine.small_secret_key)
+    left_decrypted = engine.decrypt(left_ct, secret_key)
+    right_decrypted = engine.decrypt(right_ct, secret_key)
     assert decrypted == matrix_multiply(left_decrypted, matrix_transpose(right_decrypted))
     if noise_std == 0:
         assert decrypted == matrix_multiply(left_encoded, matrix_transpose(right_encoded))
@@ -109,11 +116,13 @@ def test_supplied_small_key_embedding_and_compiled_matrix_decryption():
         torch.arange(math.prod(small_ring.shape), dtype=torch.int32).reshape(small_ring.shape) % 2
     )
     small_secret = small_ring.polynomial(coefficients)
-    engine = Engine(ring, secret_key=small_secret, noise_std=0, compiled=True, backend="eager")
-    assert engine.small_secret_key == small_secret
+    engine = Engine(ring, noise_std=0, compiled=True, backend="eager")
+    secret_key = small_secret
     left = ring.generator("X") + 7 * ring.generator("W")
     right = 3 * ring.generator("Y") + 11
-    product = engine.matrix_multiply(engine.encrypt(left), engine.encrypt(right))
+    product = engine.matrix_multiply(
+        engine.encrypt(left, secret_key), engine.encrypt(right, secret_key)
+    )
     assert engine.decrypt(product, small_secret) == matrix_multiply(left, matrix_transpose(right))
 
 
@@ -139,18 +148,27 @@ def test_matrix_ciphertext_validation_and_rejection_of_Y_dependent_secret():
     ring = RNSRing.for_parameters(2, 9)
     other_ring = RNSRing.for_parameters(4, 9)
     engine = Engine(ring)
+    secret_key = create_secret_key(
+        ring, generator=torch.Generator(device=engine.device).manual_seed((1935) + 100000)
+    )
     with pytest.raises(TypeError):
         MatrixProductCiphertext(ring.one(), ring.one(), ring.one(), 1)
     with pytest.raises(ValueError):
         MatrixProductCiphertext(ring.one(), other_ring.one(), ring.one(), ring.one())
     with pytest.raises(ValueError):
-        engine.matrix_multiply(engine.encrypt(1), Engine(other_ring).encrypt(1))
+        engine.matrix_multiply(
+            engine.encrypt(1, secret_key),
+            Engine(other_ring).encrypt(
+                1, create_secret_key(other_ring, generator=torch.Generator().manual_seed(99))
+            ),
+        )
     with pytest.raises(TypeError):
-        engine.matrix_multiply(engine.encrypt(1), ring.one())
+        engine.matrix_multiply(engine.encrypt(1, secret_key), ring.one())
     Y_secret = ring.generator("Y")
-    invalid_engine = Engine(ring, secret_key=Y_secret)
-    with pytest.raises(ValueError, match="constant in Y"):
-        invalid_engine.matrix_multiply(invalid_engine.encrypt(1), invalid_engine.encrypt(1))
-    valid_product = engine.matrix_multiply(engine.encrypt(1), engine.encrypt(1))
+    # Evaluation no longer inspects a retained key; matrix decryption checks
+    # that the caller's explicit key belongs to the required small ring.
+    valid_product = engine.matrix_multiply(
+        engine.encrypt(1, secret_key), engine.encrypt(1, secret_key)
+    )
     with pytest.raises(ValueError, match="constant in Y"):
         engine.decrypt(valid_product, Y_secret)

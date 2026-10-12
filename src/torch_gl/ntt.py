@@ -25,43 +25,78 @@ def _butterfly_constants(q: int, root: int, length: int) -> tuple[tuple[int, int
     return tuple(stages)
 
 
-def _dft(
-    values: torch.Tensor,
-    arithmetic: ResidueArithmetic,
-    tables: tuple[torch.Tensor, ...],
-    constants: tuple[tuple[int, int, int], ...],
-    depth: int = 0,
-) -> torch.Tensor:
-    """Decimation in time with vectorized radix-2 and radix-3 butterflies."""
-    length = values.shape[-1]
-    if length == 1:
-        return values
-    radix, omega, omega_squared = constants[depth]
-    branch_length = length // radix
-    branches = values.reshape(*values.shape[:-1], branch_length, radix).transpose(-2, -1)
-    branches = _dft(branches, arithmetic, tables, constants, depth + 1)
-    twiddles = tables[depth]
-    first_branch = branches[..., 0, :]
-    second_branch = arithmetic.multiply(branches[..., 1, :], twiddles[0])
+def _butterfly(branches, arithmetic, radix, omega):
+    first_branch, second_branch = branches[..., 0, :], branches[..., 1, :]
     if radix == 2:
         output = (
             arithmetic.add(first_branch, second_branch),
             arithmetic.subtract(first_branch, second_branch),
         )
     else:
-        third_branch = arithmetic.multiply(branches[..., 2, :], twiddles[1])
+        third_branch = branches[..., 2, :]
+        # omega**2 = -1-omega: one multiplication replaces four.
+        difference = arithmetic.multiply(arithmetic.subtract(second_branch, third_branch), omega)
         output = (
             arithmetic.add(arithmetic.add(first_branch, second_branch), third_branch),
-            arithmetic.add(
-                arithmetic.add(first_branch, arithmetic.multiply(second_branch, omega)),
-                arithmetic.multiply(third_branch, omega_squared),
-            ),
-            arithmetic.add(
-                arithmetic.add(first_branch, arithmetic.multiply(second_branch, omega_squared)),
-                arithmetic.multiply(third_branch, omega),
-            ),
+            arithmetic.add(arithmetic.subtract(first_branch, third_branch), difference),
+            arithmetic.subtract(arithmetic.subtract(first_branch, second_branch), difference),
         )
-    return torch.stack(output, dim=-2).reshape(*values.shape[:-1], length)
+    return torch.stack(output, dim=-2)
+
+
+def _paired_dft(
+    values: torch.Tensor,
+    arithmetic: ResidueArithmetic,
+    tables: tuple[torch.Tensor, ...],
+    constants: tuple[tuple[int, int, int], ...],
+    *,
+    inverse: bool = False,
+) -> torch.Tensor:
+    """GS DIF: natural -> digit order; CT DIT: digit order -> natural.
+
+    Every stage batches contiguous groups. No digit-reversal gather occurs
+    here; pointwise operations retain the forward transform's ordering.
+    """
+    length = values.shape[-1]
+    stage_lengths = []
+    stage_length = length
+    for radix, _, _ in constants:
+        stage_lengths.append(stage_length)
+        stage_length //= radix
+    depths = range(len(constants) - 1, -1, -1) if inverse else range(len(constants))
+    for depth in depths:
+        radix, omega, _ = constants[depth]
+        branch_length = stage_lengths[depth] // radix
+        branches = values.reshape(
+            *values.shape[:-1], length // stage_lengths[depth], radix, branch_length
+        )
+        if not inverse:
+            branches = _butterfly(branches, arithmetic, radix, omega)
+        weighted = arithmetic.multiply(branches[..., 1:, :], tables[depth])
+        branches = torch.cat((branches[..., :1, :], weighted), dim=-2)
+        if inverse:
+            branches = _butterfly(branches, arithmetic, radix, omega)
+        values = branches.reshape(*values.shape[:-1], length)
+    return values
+
+
+@lru_cache(maxsize=128)
+def _digit_order(length: int) -> tuple[int, ...]:
+    """Natural frequency index at each GS output position (mixed radix)."""
+    if length == 1:
+        return (0,)
+    radix = 2 if length % 2 == 0 else 3
+    return tuple(
+        branch + radix * frequency
+        for branch in range(radix)
+        for frequency in _digit_order(length // radix)
+    )
+
+
+@lru_cache(maxsize=128)
+def _device_digit_order(length: int, device: str):
+    order = torch.tensor(_digit_order(length), dtype=torch.int64, device=device)
+    return order, torch.argsort(order)
 
 
 @dataclass(frozen=True)
@@ -107,18 +142,29 @@ class NTTPlan:
 
     @lru_cache(maxsize=128)  # noqa: B019 -- bounded immutable plans; cleared explicitly
     def _kernel(
-        self, device: torch.device, *, dim: int = -1, inverse: bool = False
+        self,
+        device: torch.device,
+        *,
+        dim: int = -1,
+        inverse: bool = False,
+        permuted: bool = False,
     ) -> Callable[[torch.Tensor], torch.Tensor]:
         arithmetic = arithmetic_context(self.q)
         root = pow(self.root, -1, self.q) if inverse else self.root
         tables = stage_tables(self.q, root, self.length, str(device))
         constants = _butterfly_constants(self.q, root, self.length)
         normalization = arithmetic.constant(pow(self.length, -1, self.q))
+        order = None if permuted else _device_digit_order(self.length, str(device))
 
         def kernel(values: torch.Tensor) -> torch.Tensor:
-            transformed = _dft(values.movedim(dim, -1), arithmetic, tables, constants)
+            transformed = values.movedim(dim, -1)
+            if inverse and order is not None:
+                transformed = transformed.index_select(-1, order[0])
+            transformed = _paired_dft(transformed, arithmetic, tables, constants, inverse=inverse)
             if inverse:
                 transformed = arithmetic.multiply(transformed, normalization)
+            elif order is not None:
+                transformed = transformed.index_select(-1, order[1])
             return transformed.movedim(-1, dim)
 
         return kernel
@@ -126,6 +172,7 @@ class NTTPlan:
     def prepare(self, device: torch.device | str = "cpu") -> "NTTPlan":
         """Warm bounded forward/inverse device caches before timed execution."""
         device = resolve_device(device)
+        _device_digit_order(self.length, str(device))
         for root in (self.root, pow(self.root, -1, self.q)):
             stage_tables(self.q, root, self.length, str(device))
             _butterfly_constants(self.q, root, self.length)

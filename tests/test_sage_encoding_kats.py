@@ -7,7 +7,7 @@ from pathlib import Path
 import pytest
 import torch
 
-from torch_gl import Engine, MatrixEncoder, RNSPoly, RNSRing
+from torch_gl import Engine, MatrixEncoder, RNSPoly, RNSRing, create_secret_key
 
 VECTORS = json.loads((Path(__file__).parent / "data/sage_encoding.json").read_text())
 CASES = VECTORS["cases"]
@@ -65,10 +65,13 @@ def test_sage_encoded_message_encrypts_decrypts_and_decodes():
     ring = RNSRing.for_parameters(case["n"], case["p"])
     encoder = MatrixEncoder(ring, scale=case["scale"])
     engine = Engine(ring, generator=torch.Generator().manual_seed(case["seed"]))
+    secret_key = create_secret_key(
+        ring, generator=torch.Generator(device=engine.device).manual_seed((case["seed"]) + 100000)
+    )
     inputs = complex_tensor(case["input_slots"], case["slot_shape"]) / case["slot_denominator"]
     encoded = encoder.encode(inputs)
     assert encoded.reconstruct() == tuple(case["encoded_coefficients"])
-    decrypted = engine.decrypt(engine.encrypt(encoded), engine.secret_key)
+    decrypted = engine.decrypt(engine.encrypt(encoded, secret_key), secret_key)
     noise = (decrypted - encoded).reconstruct()
     bound = (sum(abs(value) for value in noise) + math.prod(ring.shape[:-1]) / math.sqrt(2)) / case[
         "scale"

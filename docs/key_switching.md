@@ -51,6 +51,8 @@ The mask is sampled uniformly directly in the NTT domain, an invertible image
 of the uniform coefficient distribution. Each e_j is sampled once in integer
 Gaussian coefficient channels and shared across all primes. Stored keys are
 int32 Montgomery NTT tensors; no source or destination secret is stored in them.
+Evaluation keys now use GS mixed-radix digit order internally. Regenerate keys
+created by older natural-order implementations before using this version.
 
 The inner products are evaluated in the NTT domain and transformed back.
 ModDown applies Han–Ki's coefficient-wise formula:
@@ -72,20 +74,30 @@ over those Y coefficients, and the same smaller-ring key is broadcast over
 the batch. No Y NTT is performed on this path.
 
 ```python
+import torch
+
+from torch_gl import create_secret_key
+
 source = Engine(ring, generator=torch.Generator().manual_seed(1))
+source_secret_key = create_secret_key(
+    ring, generator=torch.Generator(device=source.device).manual_seed(1 + 100000)
+)
 target = Engine(ring, generator=torch.Generator().manual_seed(2))
+target_secret_key = create_secret_key(
+    ring, generator=torch.Generator(device=target.device).manual_seed(2 + 100000)
+)
 switcher = KeySwitcher(ring, k=4)
-key = switcher.generate_key(source.small_secret_key, target.small_secret_key)
-original = source.encrypt(encoder.encode(message))
+key = switcher.generate_key(source_secret_key, target_secret_key)
+original = source.encrypt(encoder.encode(message), source_secret_key)
 switched = switcher.switch_ciphertext(original, key)
-recovered = encoder.decode(target.decrypt(switched, target.small_secret_key))
+recovered = encoder.decode(target.decrypt(switched, target_secret_key))
 ```
 
 `switch_small(component,key)` returns an encryption of `component*s_source`.
 `switch_ciphertext()` adds the original b. For Hadamard multiplication:
 
 ```python
-key = switcher.generate_hadamard_key(engine.small_secret_key)
+key = switcher.generate_hadamard_key(secret_key)
 product = engine.multiply(left_ct, right_ct)
 switched = switcher.relinearize(product, key)
 # Decode at left_scale*right_scale; key switching does not rescale.
@@ -101,10 +113,10 @@ ordinary-transpose matrix product, the two source secrets are `s(Y,W)` and
 `s(X,W)*s(Y,W)`:
 
 ```python
-keys = switcher.generate_matrix_keys(engine.small_secret_key)
+keys = switcher.generate_matrix_keys(secret_key)
 product = engine.matrix_multiply(left_ct, right_ct)
 switched = switcher.relinearize_matrix(product, keys)
-recovered = product_decoder.decode(engine.decrypt(switched, engine.small_secret_key))
+recovered = product_decoder.decode(engine.decrypt(switched, secret_key))
 ```
 
 It computes `(c00,c10)+SwitchBig(c01,Y_key)+SwitchBig(c11,mixed_key)`.

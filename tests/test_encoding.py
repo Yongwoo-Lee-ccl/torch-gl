@@ -3,7 +3,7 @@ import math
 import pytest
 import torch
 
-from torch_gl import Engine, MatrixEncoder, RNSPoly, RNSRing
+from torch_gl import Engine, MatrixEncoder, RNSPoly, RNSRing, create_secret_key
 
 DEVICES = ["cpu"] + (["cuda"] if torch.cuda.is_available() else [])
 
@@ -87,6 +87,9 @@ def test_encoded_matrices_encrypt_decrypt_decode(device, scale):
     encoder = MatrixEncoder(ring, scale=scale, device=device)
     generator = torch.Generator(device=device).manual_seed(1935)
     engine = Engine(ring, generator=generator, device=device)
+    secret_key = create_secret_key(
+        ring, generator=torch.Generator(device=engine.device).manual_seed((1935) + 100000)
+    )
     matrices = torch.randn(
         encoder.slot_shape, dtype=torch.complex128, device=device, generator=generator
     )
@@ -95,7 +98,7 @@ def test_encoded_matrices_encrypt_decrypt_decode(device, scale):
     assert all(limb.coefficients.dtype == torch.int32 for limb in encoded.limbs)
     if scale > 2**30:
         assert max(abs(value) for value in encoded.reconstruct()) > ring.moduli[0] // 2
-    decrypted = engine.decrypt(engine.encrypt(encoded), engine.secret_key)
+    decrypted = engine.decrypt(engine.encrypt(encoded, secret_key), secret_key)
     # Worst-case l1 evaluation bound for rounding plus the actual sampled noise.
     noise = (decrypted - encoded).centered_coefficients()
     coefficient_count = math.prod(ring.shape[:-1])
@@ -117,7 +120,10 @@ def test_large_integer_coefficients_are_centered_modulo_full_Q(value):
         encoded.centered_coefficients()
     torch.testing.assert_close(encoder.decode(encoded), matrices, atol=0, rtol=0)
     engine = Engine(ring, generator=torch.Generator().manual_seed(40))
-    decrypted = engine.decrypt(engine.encrypt(encoded), engine.secret_key)
+    secret_key = create_secret_key(
+        ring, generator=torch.Generator(device=engine.device).manual_seed((40) + 100000)
+    )
+    decrypted = engine.decrypt(engine.encrypt(encoded, secret_key), secret_key)
     assert max(abs(error) for error in (decrypted - encoded).reconstruct()) <= 32
     # Beyond 2**53, double rounding can dominate the few-unit encryption error.
     torch.testing.assert_close(encoder.decode(decrypted), matrices, atol=128, rtol=1e-14)

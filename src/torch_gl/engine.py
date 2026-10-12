@@ -12,13 +12,40 @@ from .rings import GaussianInteger
 from .rns import RNSPoly, RNSRing
 
 
+def create_secret_key(
+    ring: RNSRing,
+    generator: torch.Generator,
+    *,
+    device: torch.device | str | None = None,
+) -> RNSPoly:
+    """Sample binary Gaussian coefficients using a caller-owned key generator.
+
+    In an X/Y/W ring the returned key lies in the small X/W ring. Engines
+    embed it when needed, without retaining it. Use a separate generator for
+    encryption randomness so key generation does not consume that stream.
+    """
+    if not isinstance(ring, RNSRing):
+        raise TypeError("ring must be an RNSRing")
+    if not isinstance(generator, torch.Generator):
+        raise TypeError("generator must be a torch.Generator")
+    device = resolve_device(generator.device if device is None else device)
+    if resolve_device(generator.device) != device:
+        raise ValueError("random generator and secret key must be on the same device")
+    if {axis.name for axis in ring.axes} == {"X", "Y", "W"}:
+        ring = RNSRing(ring.moduli, tuple(axis for axis in ring.axes if axis.name != "Y"))
+    coefficients = torch.randint(
+        2, ring.shape, dtype=torch.int32, device=device, generator=generator
+    )
+    return ring.polynomial(coefficients)
+
+
 class Engine:
     """Encrypt b=-a*s+e+m and decrypt b+a*s=m+e in an RNS ring.
 
     Small-secret real and imaginary coefficient channels are independently
-    binary; X/Y/W engines embed s(X,W) as constant in Y by default.
-    Secret and noise tensors are each sampled once, then reduced into
-    all limbs. Uniform a is sampled independently in each limb. This is an
+    binary; X/Y/W engines embed caller-supplied s(X,W) as constant in Y.
+    The engine retains no secret. Noise is sampled once per encryption and
+    reduced into all limbs. Uniform a is sampled independently in each limb. This is an
     AI-written arithmetic prototype, not a security-proven FHE implementation.
     """
 
@@ -26,7 +53,6 @@ class Engine:
         self,
         ring: RNSRing,
         *,
-        secret_key: RNSPoly | None = None,
         noise_std: float = 3.2,
         device: torch.device | str = "cpu",
         generator: torch.Generator | None = None,
@@ -52,44 +78,6 @@ class Engine:
             RNSRing(ring.moduli, tuple(axis for axis in ring.axes if axis.name != "Y"))
             if self._Y_dim is not None
             else ring
-        )
-        if secret_key is None:
-            coefficients = torch.randint(
-                2,
-                self._small_ring.shape,
-                dtype=torch.int32,
-                device=self.device,
-                generator=generator,
-            )
-            secret_key = self._small_ring.polynomial(coefficients)
-        secret_key = self._embed_secret_key(secret_key)
-        self._check_polynomial(secret_key)
-        coefficients = secret_key.centered_coefficients()
-        if not bool(((coefficients == 0) | (coefficients == 1)).all()):
-            raise ValueError("secret key coefficients must be binary (0 or 1) across all limbs")
-        self._secret_key = secret_key
-
-    @property
-    def secret_key(self) -> RNSPoly:
-        """The secret embedded in the engine ring; default full-ring keys are Y-constant."""
-        return self._secret_key
-
-    @property
-    def small_secret_key(self) -> RNSPoly:
-        """Return s(X,W) in its smaller RNS ring, verifying independence of Y."""
-        if self._Y_dim is None:
-            return self.secret_key
-        self._check_matrix_secret(self.secret_key)
-        return RNSPoly(
-            self._small_ring,
-            tuple(
-                MultivariatePoly._from_owned(
-                    small_ring, limb._coefficients.select(self._Y_dim, 0).clone()
-                )
-                for limb, small_ring in zip(
-                    self.secret_key.limbs, self._small_ring.rings, strict=True
-                )
-            ),
         )
 
     def _embed_secret_key(self, secret_key: RNSPoly) -> RNSPoly:
@@ -137,7 +125,15 @@ class Engine:
             .to(torch.int32)
         )
 
-    def encrypt(self, message: RNSPoly | torch.Tensor | GaussianInteger) -> Ciphertext:
+    def encrypt(
+        self, message: RNSPoly | torch.Tensor | GaussianInteger, secret_key: RNSPoly
+    ) -> Ciphertext:
+        """Encrypt using an explicit binary key; never retain the supplied key."""
+        secret_key = self._embed_secret_key(secret_key)
+        self._check_polynomial(secret_key)
+        coefficients = secret_key.centered_coefficients()
+        if not bool(((coefficients == 0) | (coefficients == 1)).all()):
+            raise ValueError("secret key coefficients must be binary (0 or 1) across all limbs")
         if isinstance(message, torch.Tensor):
             if message.device != self.device:
                 raise ValueError("message tensor must be on the engine's device")
@@ -148,7 +144,7 @@ class Engine:
         uniform_component = self.ring.uniform(device=self.device, generator=self._generator)
         noise = self.ring.polynomial(self._sample_noise())
         secret_product = uniform_component.multiply(
-            self.secret_key, compiled=self.compiled, backend=self.backend
+            secret_key, compiled=self.compiled, backend=self.backend
         )
         masked_component = message + noise - secret_product
         return Ciphertext(b=masked_component, a=uniform_component)
@@ -164,7 +160,6 @@ class Engine:
 
     def matrix_multiply(self, left: Ciphertext, right: Ciphertext) -> MatrixProductCiphertext:
         """Encrypt the matrix product m0 @ m1.T without key switching."""
-        self._check_matrix_secret(self.secret_key)
         self._check_matrix_layout()
         for ciphertext in (left, right):
             if not isinstance(ciphertext, Ciphertext):

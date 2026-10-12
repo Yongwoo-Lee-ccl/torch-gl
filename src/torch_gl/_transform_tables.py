@@ -55,9 +55,10 @@ def clear_transform_cache() -> None:
     from ._multiplication import native_multiplier
     from .cyclotomic import CyclotomicNTTPlan
     from .matrix import _matrix_plan
-    from .ntt import NTTPlan
+    from .ntt import NTTPlan, _device_digit_order
 
     native_multiplier.cache_clear()
     _matrix_plan.cache_clear()
     NTTPlan._kernel.cache_clear()
+    _device_digit_order.cache_clear()
     CyclotomicNTTPlan._kernel.cache_clear()

@@ -10,6 +10,7 @@ from torch_gl import (
     KeySwitchParameters,
     MatrixEncoder,
     RNSRing,
+    create_secret_key,
 )
 from torch_gl.basis import RNSBasisConverter
 from torch_gl.modular import arithmetic_context, mul_mod
@@ -68,14 +69,20 @@ def test_han_ki_mod_down_matches_exact_integer_division_with_bounded_error():
 def test_noiseless_evaluation_keys_have_only_bounded_mod_down_error():
     ring = RNSRing.for_parameters(4, 9, limb_count=3)
     source = Engine(ring, generator=torch.Generator().manual_seed(101))
+    source_secret_key = create_secret_key(
+        ring, generator=torch.Generator(device=source.device).manual_seed((101) + 100000)
+    )
     target = Engine(ring, generator=torch.Generator().manual_seed(102))
+    target_secret_key = create_secret_key(
+        ring, generator=torch.Generator(device=target.device).manual_seed((102) + 100000)
+    )
     switcher = KeySwitcher(ring, k=2, noise_std=0, generator=torch.Generator().manual_seed(103))
-    key = switcher.generate_key(source.small_secret_key, target.small_secret_key)
-    original = source.encrypt(10000 * ring.generator("Y"))
+    key = switcher.generate_key(source_secret_key, target_secret_key)
+    original = source.encrypt(10000 * ring.generator("Y"), source_secret_key)
     switched = switcher.switch_ciphertext(original, key)
-    before = source.decrypt(original, source.secret_key)
-    after = target.decrypt(switched, target.secret_key)
-    secret_l1 = int(target.small_secret_key.centered_coefficients().abs().sum())
+    before = source.decrypt(original, source_secret_key)
+    after = target.decrypt(switched, target_secret_key)
+    secret_l1 = int(target_secret_key.centered_coefficients().abs().sum())
     # Conv gives each discarded remainder in (-k*P/2,k*P/2). Phi_p reduction can
     # duplicate a convolution term twice; Gaussian channels use the total l1.
     assert int((after - before).centered_coefficients().abs().max()) < switcher.k * (
@@ -116,18 +123,24 @@ def test_grouped_decomposition_reconstructs_original_residues(limb_count, k):
 def test_switch_small_between_independent_secrets(k):
     ring = RNSRing.for_parameters(4, 9, limb_count=3)
     source_engine = Engine(ring, generator=torch.Generator().manual_seed(1))
+    source_secret_key = create_secret_key(
+        ring, generator=torch.Generator(device=source_engine.device).manual_seed((1) + 100000)
+    )
     target_engine = Engine(ring, generator=torch.Generator().manual_seed(2))
-    assert source_engine.secret_key != target_engine.secret_key
+    target_secret_key = create_secret_key(
+        ring, generator=torch.Generator(device=target_engine.device).manual_seed((2) + 100000)
+    )
+    assert source_secret_key != target_secret_key
     switcher = KeySwitcher(ring, k=k, generator=torch.Generator().manual_seed(3))
-    key = switcher.generate_key(source_engine.small_secret_key, target_engine.small_secret_key)
+    key = switcher.generate_key(source_secret_key, target_secret_key)
     message = (
         10000 * ring.generator("X") + 10000 * ring.generator("Y") + 10000 * ring.generator("W")
     )
-    original = source_engine.encrypt(message)
+    original = source_engine.encrypt(message, source_secret_key)
     switched = switcher.switch_ciphertext(original, key)
     assert isinstance(switched, Ciphertext)
-    original_plaintext = source_engine.decrypt(original, source_engine.secret_key)
-    switched_plaintext = target_engine.decrypt(switched, target_engine.small_secret_key)
+    original_plaintext = source_engine.decrypt(original, source_secret_key)
+    switched_plaintext = target_engine.decrypt(switched, target_secret_key)
     difference = (switched_plaintext - original_plaintext).centered_coefficients()
     assert int(difference.abs().max()) < 10000
     assert int((switched_plaintext - message).centered_coefficients().abs().max()) < 10000
@@ -142,8 +155,11 @@ def test_switch_small_between_independent_secrets(k):
 def test_hadamard_relinearization_switches_s_squared_with_small_key(k):
     ring = RNSRing.for_parameters(4, 9, limb_count=4)
     engine = Engine(ring, generator=torch.Generator().manual_seed(19))
+    secret_key = create_secret_key(
+        ring, generator=torch.Generator(device=engine.device).manual_seed((19) + 100000)
+    )
     switcher = KeySwitcher(ring, k=k, generator=torch.Generator().manual_seed(20))
-    key = switcher.generate_hadamard_key(engine.small_secret_key)
+    key = switcher.generate_hadamard_key(secret_key)
     assert key.kind == "small"
     encoder = MatrixEncoder(ring)
     decoder = MatrixEncoder(ring, scale=encoder.scale**2)
@@ -151,11 +167,12 @@ def test_hadamard_relinearization_switches_s_squared_with_small_key(k):
     left = torch.randn(encoder.slot_shape, dtype=torch.complex128, generator=generator)
     right = torch.randn(encoder.slot_shape, dtype=torch.complex128, generator=generator)
     product = engine.multiply(
-        engine.encrypt(encoder.encode(left)), engine.encrypt(encoder.encode(right))
+        engine.encrypt(encoder.encode(left), secret_key),
+        engine.encrypt(encoder.encode(right), secret_key),
     )
     switched = switcher.relinearize(product, key)
-    before = engine.decrypt(product, engine.secret_key)
-    after = engine.decrypt(switched, engine.small_secret_key)
+    before = engine.decrypt(product, secret_key)
+    after = engine.decrypt(switched, secret_key)
     assert int((after - before).centered_coefficients().abs().max()) < 10000
     torch.testing.assert_close(decoder.decode(after), left * right, atol=2e-9, rtol=1e-11)
 
@@ -165,8 +182,11 @@ def test_hadamard_relinearization_switches_s_squared_with_small_key(k):
 def test_matrix_relinearization_uses_two_big_switches(k, variables, monkeypatch):
     ring = RNSRing.for_parameters(4, 9, limb_count=4, variables=variables)
     engine = Engine(ring, generator=torch.Generator().manual_seed(31))
+    secret_key = create_secret_key(
+        ring, generator=torch.Generator(device=engine.device).manual_seed((31) + 100000)
+    )
     switcher = KeySwitcher(ring, k=k, generator=torch.Generator().manual_seed(32))
-    keys = switcher.generate_matrix_keys(engine.small_secret_key)
+    keys = switcher.generate_matrix_keys(secret_key)
     assert keys.Y_key.kind == keys.mixed_key.kind == "big"
     encoder = MatrixEncoder(ring)
     decoder = MatrixEncoder(ring, scale=encoder.scale**2)
@@ -174,7 +194,8 @@ def test_matrix_relinearization_uses_two_big_switches(k, variables, monkeypatch)
     left = torch.randn(encoder.slot_shape, dtype=torch.complex128, generator=generator)
     right = torch.randn(encoder.slot_shape, dtype=torch.complex128, generator=generator)
     product = engine.matrix_multiply(
-        engine.encrypt(encoder.encode(left)), engine.encrypt(encoder.encode(right))
+        engine.encrypt(encoder.encode(left), secret_key),
+        engine.encrypt(encoder.encode(right), secret_key),
     )
     original_switch = switcher.switch_big
     calls = []
@@ -186,8 +207,8 @@ def test_matrix_relinearization_uses_two_big_switches(k, variables, monkeypatch)
     monkeypatch.setattr(switcher, "switch_big", capture_switch)
     switched = switcher.relinearize_matrix(product, keys)
     assert len(calls) == 2 and calls[0] is keys.Y_key and calls[1] is keys.mixed_key
-    before = engine.decrypt(product, engine.secret_key)
-    after = engine.decrypt(switched, engine.small_secret_key)
+    before = engine.decrypt(product, secret_key)
+    after = engine.decrypt(switched, secret_key)
     assert int((after - before).centered_coefficients().abs().max()) < 20000
     torch.testing.assert_close(
         decoder.decode(after), left @ right.transpose(-1, -2), atol=2e-9, rtol=1e-11
@@ -197,11 +218,17 @@ def test_matrix_relinearization_uses_two_big_switches(k, variables, monkeypatch)
 def test_evaluation_key_relation_and_file_backed_keys(tmp_path):
     ring = RNSRing.for_parameters(2, 9, limb_count=3)
     source_engine = Engine(ring, generator=torch.Generator().manual_seed(41))
+    source_secret_key = create_secret_key(
+        ring, generator=torch.Generator(device=source_engine.device).manual_seed((41) + 100000)
+    )
     target_engine = Engine(ring, generator=torch.Generator().manual_seed(42))
+    target_secret_key = create_secret_key(
+        ring, generator=torch.Generator(device=target_engine.device).manual_seed((42) + 100000)
+    )
     switcher = KeySwitcher(ring, k=2, noise_std=0, generator=torch.Generator().manual_seed(43))
-    key = switcher.generate_key(source_engine.small_secret_key, target_engine.small_secret_key)
-    source_values = source_engine.small_secret_key.centered_coefficients()
-    target_values = target_engine.small_secret_key.centered_coefficients()
+    key = switcher.generate_key(source_secret_key, target_secret_key)
+    source_values = source_secret_key.centered_coefficients()
+    target_values = target_secret_key.centered_coefficients()
     for index, prime in enumerate(switcher.parameters.extended_ring.moduli):
         transform = switcher._transform("small", index)
         arithmetic = arithmetic_context(prime)
@@ -217,10 +244,10 @@ def test_evaluation_key_relation_and_file_backed_keys(tmp_path):
             assert torch.equal(decrypted, expected)
     file_switcher = KeySwitcher(ring, k=2, noise_std=0, generator=torch.Generator().manual_seed(43))
     file_key = file_switcher.generate_key(
-        source_engine.small_secret_key, target_engine.small_secret_key, storage_directory=tmp_path
+        source_secret_key, target_secret_key, storage_directory=tmp_path
     )
     assert file_key._paths and not file_key._limbs
-    ciphertext = source_engine.encrypt(10000)
+    ciphertext = source_engine.encrypt(10000, source_secret_key)
     assert switcher.switch_ciphertext(ciphertext, key) == file_switcher.switch_ciphertext(
         ciphertext, file_key
     )
@@ -234,10 +261,13 @@ def test_invalid_switching_configuration_and_key_kinds():
     with pytest.raises(ValueError, match="disjoint"):
         KeySwitchParameters(ring, k=1, key_moduli=ring.moduli[:1])
     engine = Engine(ring)
+    secret_key = create_secret_key(
+        ring, generator=torch.Generator(device=engine.device).manual_seed((1935) + 100000)
+    )
     switcher = KeySwitcher(ring, k=2)
     with pytest.raises(ValueError, match="constant in Y"):
-        switcher.generate_key(ring.generator("Y"), engine.small_secret_key)
-    key = switcher.generate_hadamard_key(engine.small_secret_key)
+        switcher.generate_key(ring.generator("Y"), secret_key)
+    key = switcher.generate_hadamard_key(secret_key)
     with pytest.raises(ValueError, match="kind"):
         switcher.switch_big(ring.one(), key)
     with pytest.raises(ValueError):

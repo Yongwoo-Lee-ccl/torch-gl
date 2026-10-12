@@ -84,6 +84,22 @@ def test_matrix_ntt_matches_direct_evaluation_and_trace_coefficients():
     assert torch.equal(plan.multiply(left, right).coefficients, expected)
 
 
+def test_internal_matrix_product_does_not_permute_slots(monkeypatch):
+    ring = RNSRing.for_parameters(4, 9, limb_count=1).rings[0]
+    plan = MatrixNTTPlan(ring)
+    generator = torch.Generator().manual_seed(1935)
+    left_values = torch.randint(ring.q, ring.shape, dtype=torch.int32, generator=generator)
+    right_values = torch.randint(ring.q, ring.shape, dtype=torch.int32, generator=generator)
+    expected = direct_trace_product(left_values, right_values, plan.n, plan.p, ring.q)
+
+    def reject_permutation(*args, **kwargs):
+        raise AssertionError("internal matrix contraction must retain digit order")
+
+    monkeypatch.setattr(torch.Tensor, "index_select", reject_permutation)
+    result = plan.multiply(ring.polynomial(left_values), ring.polynomial(right_values))
+    assert torch.equal(result.coefficients, expected)
+
+
 def test_modular_matrix_sum_reduces_before_int64_overflow():
     ring = RNSRing.for_parameters(32, 3, limb_count=1).rings[0]
     arithmetic = arithmetic_context(ring.q)

@@ -18,7 +18,7 @@ from pathlib import Path
 
 import torch
 
-from torch_gl import Engine, KeySwitcher, RNSRing
+from torch_gl import Engine, KeySwitcher, RNSRing, create_secret_key
 from torch_gl._number_theory import MAX_MODULUS, is_prime
 from torch_gl.matrix import _matrix_plan
 
@@ -139,12 +139,15 @@ def main():
 
     save()
     with tempfile.TemporaryDirectory(prefix="torch-gl-switch-keys-") as key_directory:
-        print("Generating engine secret and input ciphertexts", flush=True)
+        print("Generating secret key and input ciphertexts", flush=True)
         started = time.perf_counter()
         engine = Engine(
             ring, device=device, generator=torch.Generator(device=device).manual_seed(1935)
         )
-        left, right = engine.encrypt(10000), engine.encrypt(10000)
+        secret_key = create_secret_key(
+            ring, generator=torch.Generator(device=engine.device).manual_seed((1935) + 100000)
+        )
+        left, right = engine.encrypt(10000, secret_key), engine.encrypt(10000, secret_key)
         report["input_setup_seconds"] = time.perf_counter() - started
         switcher = KeySwitcher(
             ring,
@@ -155,9 +158,7 @@ def main():
         )
         print("Generating the two big evaluation keys (excluded from operation timing)", flush=True)
         started = time.perf_counter()
-        keys = switcher.generate_matrix_keys(
-            engine.small_secret_key, storage_directory=key_directory
-        )
+        keys = switcher.generate_matrix_keys(secret_key, storage_directory=key_directory)
         report["evaluation_key_setup_seconds"] = time.perf_counter() - started
         report["evaluation_key_bytes"] = sum(
             path.stat().st_size for key in (keys.Y_key, keys.mixed_key) for path in key._paths
@@ -179,8 +180,8 @@ def main():
             "Checking decryption before and after switching (excluded from operation timing)",
             flush=True,
         )
-        before = engine.decrypt(product, engine.secret_key)
-        after = engine.decrypt(switched, engine.secret_key)
+        before = engine.decrypt(product, secret_key)
+        after = engine.decrypt(switched, secret_key)
         difference = (after - before).centered_coefficients()
         report["correctness"] = {
             "all_limb_consistent_small_CRT_error": True,

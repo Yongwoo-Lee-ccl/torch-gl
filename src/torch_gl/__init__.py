@@ -4,7 +4,7 @@ from ._transform_tables import clear_transform_cache
 from .ciphertext import Ciphertext, MatrixProductCiphertext, QuadraticCiphertext
 from .cyclotomic import CyclotomicNTTPlan
 from .encoding import MatrixEncoder
-from .engine import Engine
+from .engine import Engine, create_secret_key
 from .key_switching import KeySwitcher, KeySwitchKey, KeySwitchParameters, MatrixKeySwitchKeys
 from .matrix import MatrixNTTPlan, matrix_multiply, matrix_transpose
 from .montgomery import (
@@ -45,6 +45,7 @@ __all__ = [
     "RNSPoly",
     "RNSRing",
     "clear_transform_cache",
+    "create_secret_key",
     "intt",
     "is_montgomery_form",
     "montgomery_mul",

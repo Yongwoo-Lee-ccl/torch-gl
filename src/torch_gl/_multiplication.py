@@ -45,9 +45,14 @@ def native_multiplier(ring, device: torch.device, backend: str | None = None):
             )
         else:
             shared_plan = plan
-        forward_steps.append((shared_plan._kernel(device, dim=axis_index + 1), forward_twist))
+        forward_steps.append(
+            (shared_plan._kernel(device, dim=axis_index + 1, permuted=True), forward_twist)
+        )
         inverse_steps.append(
-            (shared_plan._kernel(device, dim=axis_index, inverse=True), inverse_twist)
+            (
+                shared_plan._kernel(device, dim=axis_index, inverse=True, permuted=True),
+                inverse_twist,
+            )
         )
     forward_steps, inverse_steps = tuple(forward_steps), tuple(reversed(inverse_steps))
     inverse_two = arithmetic.constant(pow(2, -1, ring.q))

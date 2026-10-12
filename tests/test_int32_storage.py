@@ -1,7 +1,7 @@
 import pytest
 import torch
 
-from torch_gl import Engine, NTTPlan, PolynomialRing, RNSRing
+from torch_gl import Engine, NTTPlan, PolynomialRing, RNSRing, create_secret_key
 from torch_gl.modular import mul_mod, residues
 
 
@@ -42,10 +42,13 @@ def test_polynomial_rns_key_ciphertext_noise_and_tables_use_int32():
     assert device_powers(754974721, (plan.root,), 16, "cpu").dtype == torch.int32
     rns_ring = RNSRing.for_parameters(4, 9)
     engine = Engine(rns_ring, generator=torch.Generator().manual_seed(32))
-    ciphertext = engine.encrypt(10000)
-    decrypted = engine.decrypt(ciphertext, engine.secret_key)
+    secret_key = create_secret_key(
+        rns_ring, generator=torch.Generator(device=engine.device).manual_seed((32) + 100000)
+    )
+    ciphertext = engine.encrypt(10000, secret_key)
+    decrypted = engine.decrypt(ciphertext, secret_key)
     for polynomial in (
-        *engine.secret_key.limbs,
+        *secret_key.limbs,
         *ciphertext.a.limbs,
         *ciphertext.b.limbs,
         *decrypted.limbs,

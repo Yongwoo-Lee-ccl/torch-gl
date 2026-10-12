@@ -4,7 +4,7 @@ from pathlib import Path
 import pytest
 import torch
 
-from torch_gl import Engine, MatrixEncoder, QuadraticCiphertext, RNSRing
+from torch_gl import Engine, MatrixEncoder, QuadraticCiphertext, RNSRing, create_secret_key
 
 DEVICES = ["cpu"] + (["cuda"] if torch.cuda.is_available() else [])
 
@@ -15,16 +15,22 @@ def test_ciphertext_product_components_and_decryption_equation(compiled):
     engine = Engine(
         ring, compiled=compiled, backend="eager", generator=torch.Generator().manual_seed(1935)
     )
+    secret_key = create_secret_key(
+        ring, generator=torch.Generator(device=engine.device).manual_seed((1935) + 100000)
+    )
     message_left = 10000 * ring.generator("X")
     message_right = 10000 * ring.generator("W") + 3 * ring.generator("Y")
-    left, right = engine.encrypt(message_left), engine.encrypt(message_right)
+    left, right = (
+        engine.encrypt(message_left, secret_key),
+        engine.encrypt(message_right, secret_key),
+    )
     product = engine.multiply(left, right)
     assert isinstance(product, QuadraticCiphertext)
     assert product.c0 == left.b * right.b
     assert product.c1 == left.b * right.a + right.b * left.a
     assert product.c2 == left.a * right.a
     assert left * right == product
-    secret = engine.secret_key
+    secret = engine._embed_secret_key(secret_key)
     explicit_decryption = product.c0 + product.c1 * secret + product.c2 * (secret * secret)
     decrypted_left = engine.decrypt(left, secret)
     decrypted_right = engine.decrypt(right, secret)
@@ -60,11 +66,14 @@ def test_sage_encoded_homomorphic_square_decodes_at_squared_scale(device, noise_
         noise_std=noise_std,
         generator=torch.Generator(device=device).manual_seed(1935),
     )
-    left, right = engine.encrypt(encoded), engine.encrypt(encoded)
-    decrypted_left = engine.decrypt(left, engine.secret_key)
-    decrypted_right = engine.decrypt(right, engine.secret_key)
+    secret_key = create_secret_key(
+        ring, generator=torch.Generator(device=engine.device).manual_seed((1935) + 100000)
+    )
+    left, right = engine.encrypt(encoded, secret_key), engine.encrypt(encoded, secret_key)
+    decrypted_left = engine.decrypt(left, secret_key)
+    decrypted_right = engine.decrypt(right, secret_key)
     product = engine.multiply(left, right)
-    decrypted = engine.decrypt(product, engine.secret_key)
+    decrypted = engine.decrypt(product, secret_key)
     assert decrypted == decrypted_left * decrypted_right
     reconstructed = decrypted.reconstruct()
     assert max(abs(value) for value in reconstructed) > 2**63
@@ -88,17 +97,25 @@ def test_quadratic_ciphertext_validation_and_engine_context():
     ring = RNSRing.for_parameters(2, 9)
     other_ring = RNSRing.for_parameters(4, 9)
     engine = Engine(ring)
-    ciphertext = engine.encrypt(10000)
+    secret_key = create_secret_key(
+        ring, generator=torch.Generator(device=engine.device).manual_seed((1935) + 100000)
+    )
+    ciphertext = engine.encrypt(10000, secret_key)
     with pytest.raises(TypeError):
         QuadraticCiphertext(ring.one(), ring.one(), 1)
     with pytest.raises(ValueError):
         QuadraticCiphertext(ring.one(), other_ring.one(), ring.one())
     with pytest.raises(ValueError):
-        engine.multiply(ciphertext, Engine(other_ring).encrypt(1))
+        engine.multiply(
+            ciphertext,
+            Engine(other_ring).encrypt(
+                1, create_secret_key(other_ring, generator=torch.Generator().manual_seed(99))
+            ),
+        )
     with pytest.raises(ValueError):
         engine.decrypt(
             QuadraticCiphertext(other_ring.one(), other_ring.one(), other_ring.one()),
-            engine.secret_key,
+            secret_key,
         )
     with pytest.raises(TypeError):
         engine.multiply(ciphertext, ciphertext * ciphertext)

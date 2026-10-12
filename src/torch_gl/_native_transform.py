@@ -50,9 +50,9 @@ class NativeTransform:
                 ).T.reshape(shape)
             else:
                 shared = plan
-            self._forward_steps.append((shared._kernel(device, dim=dim), twist))
+            self._forward_steps.append((shared._kernel(device, dim=dim, permuted=True), twist))
             self._inverse_steps.append(
-                (shared._kernel(device, dim=dim, inverse=True), inverse_twist)
+                (shared._kernel(device, dim=dim, inverse=True, permuted=True), inverse_twist)
             )
         self._inverse_steps.reverse()
 

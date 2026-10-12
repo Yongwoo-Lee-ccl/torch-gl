@@ -32,6 +32,13 @@ it does not establish a corresponding GPU ratio.
   transform length, and device. `prepare(device)` warms both directions.
 - Gaussian split branches use one batched transform and a frequency permutation.
 - Cyclotomic primitive-root classes use one batched radix-3 transform.
+- Internal transforms pair GS DIF forward with CT DIT inverse and retain
+  mixed-radix digit order through polynomial multiplication, matrix contraction,
+  and key switching. There is no intermediate bit/digit-reversal pass. Public
+  NTT methods still return natural order; public matrix slots use encoder order.
+- Radix-3 butterflies use one constant multiplication plus two branch twiddles.
+  This reduces arithmetic, but eager stages still allocate intermediate tensors;
+  the paired ordering alone does not provide a fused or in-place GPU kernel.
 - Polynomial products batch both operands and reuse the ring's plan objects.
 - Native products keep Gaussian branches split throughout all axes and pointwise
   multiplication, then merge once. This removes repeated conversions and reduces

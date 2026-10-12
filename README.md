@@ -181,19 +181,25 @@ are future work.
 ## RNS encryption
 
 ```python
-from torch_gl import Engine, RNSRing
+import torch
+
+from torch_gl import Engine, RNSRing, create_secret_key
 
 ring = RNSRing.for_parameters(n=4, p=9, limb_count=3)
 engine = Engine(ring)
+secret_key = create_secret_key(
+    ring, generator=torch.Generator(device=engine.device).manual_seed(1935 + 100000)
+)
 message = 10000 * ring.generator("X")
-ciphertext = engine.encrypt(message)
-decrypted = engine.decrypt(ciphertext, engine.secret_key)
+ciphertext = engine.encrypt(message, secret_key)
+decrypted = engine.decrypt(ciphertext, secret_key)
 error = decrypted.centered_coefficients() - message.centered_coefficients()
 ```
 
-RNS values contain independent 30-bit polynomial blocks. The engine samples a
-shared binary secret and shared rounded Gaussian error with standard deviation
-3.2, computes `b=-a*s+e+m`, and returns `Ciphertext(b,a)`. Decryption returns the
+RNS values contain independent 30-bit polynomial blocks. Key generation uses a
+separate caller-owned generator. The engine receives that key explicitly, samples
+shared rounded Gaussian error with standard deviation 3.2, computes `b=-a*s+e+m`,
+and returns `Ciphertext(b,a)`. Decryption returns the
 RNS polynomial `m+e`. Larger coefficients can be exported with exact Python-integer
 CRT reconstruction. Torch sampling is for this research prototype, not secure
 production encryption. See [encryption notes](docs/encryption.md).
@@ -207,15 +213,19 @@ pytest tests/test_rns.py tests/test_engine.py
 
 ```python
 import torch
-from torch_gl import Engine, MatrixEncoder, RNSRing
+
+from torch_gl import Engine, MatrixEncoder, RNSRing, create_secret_key
 
 ring = RNSRing.for_parameters(n=4, p=9, limb_count=3)
 encoder = MatrixEncoder(ring, scale=2**40)
 engine = Engine(ring)
+secret_key = create_secret_key(
+    ring, generator=torch.Generator(device=engine.device).manual_seed(1935 + 100000)
+)
 matrices = torch.randn(encoder.slot_shape, dtype=torch.complex128)  # (6, 4, 4)
 encoded = encoder.encode(matrices)
-ciphertext = engine.encrypt(encoded)
-recovered = encoder.decode(engine.decrypt(ciphertext, engine.secret_key))
+ciphertext = engine.encrypt(encoded, secret_key)
+recovered = encoder.decode(engine.decrypt(ciphertext, secret_key))
 print((recovered - matrices).abs().max())
 ```
 

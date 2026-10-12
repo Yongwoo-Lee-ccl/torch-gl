@@ -53,12 +53,17 @@ class CyclotomicNTTPlan:
 
     @lru_cache(maxsize=128)  # noqa: B019 -- bounded immutable plans; cleared explicitly
     def _kernel(
-        self, device: torch.device, *, dim: int = -1, inverse: bool = False
+        self,
+        device: torch.device,
+        *,
+        dim: int = -1,
+        inverse: bool = False,
+        permuted: bool = False,
     ) -> Callable[[torch.Tensor], torch.Tensor]:
         arithmetic = arithmetic_context(self.q)
         block_length = self.p // 3
         plan = NTTPlan(self.q, block_length, pow(self.root, 3, self.q))
-        branch_kernel = plan._kernel(device, inverse=inverse)
+        branch_kernel = plan._kernel(device, inverse=inverse, permuted=permuted)
         omega = pow(self.root, block_length, self.q)
         encoded_omega = arithmetic.constant(omega)
         inverse_difference = arithmetic.constant(pow((omega - omega * omega) % self.q, -1, self.q))

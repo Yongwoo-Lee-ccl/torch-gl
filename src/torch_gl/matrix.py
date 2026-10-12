@@ -8,7 +8,7 @@ from ._transform_tables import device_powers, resolve_device
 from .cyclotomic import CyclotomicNTTPlan
 from .modular import arithmetic_context, residues
 from .multivariate_poly import MultivariatePoly
-from .ntt import NTTPlan
+from .ntt import NTTPlan, _digit_order
 from .rings import PolynomialRing
 from .rns import RNSPoly
 from .twisted import GaussianNTTPlan
@@ -88,6 +88,7 @@ class MatrixNTTPlan:
                 ).T.reshape(shape)
                 positive_order = [(pow(5, slot, 4 * self.n) - 1) // 4 for slot in range(self.n)]
                 negative_order = [(-index) % self.n for index in positive_order]
+                digit_order = _digit_order(self.n)
             else:
                 shared_plan = plan
                 stride = self.p // 3
@@ -99,18 +100,33 @@ class MatrixNTTPlan:
                 exponents = [pow(2, slot, self.p) for slot in range(plan.length)]
                 positive_order = [compact_index(exponent) for exponent in exponents]
                 negative_order = [compact_index((-exponent) % self.p) for exponent in exponents]
+                digit_order = tuple(
+                    branch * stride + frequency
+                    for branch in range(2)
+                    for frequency in _digit_order(stride)
+                )
+            # Fold digit reversal into the already-required canonical slot
+            # permutation, rather than adding a separate reorder pass.
+            natural_to_digit = [0] * len(digit_order)
+            for position, frequency in enumerate(digit_order):
+                natural_to_digit[frequency] = position
             permutations = tuple(
-                torch.tensor(order, device=self.device)
+                torch.tensor([natural_to_digit[index] for index in order], device=self.device)
                 for order in (positive_order, negative_order)
             )
             inverse_permutations = tuple(torch.argsort(order) for order in permutations)
             self._forward_steps.append(
-                (dim, shared_plan._kernel(self.device, dim=dim), twist, permutations)
+                (
+                    dim,
+                    shared_plan._kernel(self.device, dim=dim, permuted=True),
+                    twist,
+                    permutations,
+                )
             )
             self._inverse_steps.append(
                 (
                     dim,
-                    shared_plan._kernel(self.device, dim=dim, inverse=True),
+                    shared_plan._kernel(self.device, dim=dim, inverse=True, permuted=True),
                     inverse_twist,
                     inverse_permutations,
                 )
@@ -128,7 +144,7 @@ class MatrixNTTPlan:
         if polynomial.ring != self.ring or polynomial.device != self.device:
             raise ValueError("polynomial must have the plan's ring and device")
 
-    def _forward_residues(self, coefficients):
+    def _forward_residues(self, coefficients, *, canonical=True):
         arithmetic = self._arithmetic
         real, imag = arithmetic.encode(coefficients).unbind(-1)
         imaginary_part = arithmetic.multiply(imag, self._encoded_imaginary)
@@ -138,14 +154,18 @@ class MatrixNTTPlan:
         for dim, transform, twist, permutations in self._forward_steps:
             if twist is not None:
                 values = arithmetic.multiply(values, twist)
-            values = _reorder_branches(transform(values), dim, permutations)
+            values = transform(values)
+            if canonical:
+                values = _reorder_branches(values, dim, permutations)
         return values.permute(self._slot_dims)
 
-    def _inverse_residues(self, slots):
+    def _inverse_residues(self, slots, *, canonical=True):
         arithmetic = self._arithmetic
         values = slots.permute(self._coefficient_dims)
         for dim, transform, twist, permutations in self._inverse_steps:
-            values = transform(_reorder_branches(values, dim, permutations))
+            if canonical:
+                values = _reorder_branches(values, dim, permutations)
+            values = transform(values)
             if twist is not None:
                 values = arithmetic.multiply(values, twist)
         positive, negative = values.unbind(-1)
@@ -169,11 +189,11 @@ class MatrixNTTPlan:
         self._check_polynomial(left)
         self._check_polynomial(right)
         slots = _matrix_product_residues(
-            self._forward_residues(left._coefficients),
-            self._forward_residues(right._coefficients),
+            self._forward_residues(left._coefficients, canonical=False),
+            self._forward_residues(right._coefficients, canonical=False),
             self._arithmetic,
         )
-        return self._inverse_residues(slots)
+        return self._inverse_residues(slots, canonical=False)
 
 
 @lru_cache(maxsize=32)

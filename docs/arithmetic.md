@@ -30,10 +30,17 @@ For `length=2^a 3^b`, choose a primitive root of exact order `length` and comput
 slots[frequency] = sum(coefficients[index] * root^(index * frequency)) mod q.
 ```
 
-Cooley–Tukey decimation in time splits into two or three branches. Radix-3
-butterflies use a primitive cube root. Output is in natural frequency order.
-The inverse uses the inverse root and normalization by the modular inverse of
-the transform length.
+The forward uses Gentleman–Sande decimation in frequency; the inverse uses
+Cooley–Tukey decimation in time with the inverse root and normalization by the
+modular inverse of the length. Both use iterative, batched radix-2/radix-3 stages.
+The radix-3 butterfly uses `omega²=-1-omega` to need only one constant
+multiplication, in addition to its two branch twiddles.
+
+Internal forward output is in mixed-radix digit order (bit reversal for powers
+of two). Multiplication and key switching retain that order and feed it directly
+to the inverse, without digit-reversal passes. Public transform methods preserve
+natural frequency order using cached boundary permutations. For `Phi_(3^exponent)`,
+digit order applies separately within each primitive-root class.
 
 ## Power-of-three cyclotomic transform
 
@@ -71,11 +78,12 @@ and hence to multiplication modulo `T^n-i`.
 
 ## Slot ordering versus the paper
 
-Our transforms use arithmetic frequency order. The encoding in §4.1 uses
+Public transforms use arithmetic frequency order. The encoding in §4.1 uses
 `rho^(5^j)` for X/Y and `eta^(gamma^ell)` for W, with inverse roots on its negative
-branch. These enumerate the same root sets with permutations. Future encoders,
-automorphisms, and matrix operations must explicitly implement those permutations.
-The current API does not implement the paper's matrix-slot encoding.
+branch. These enumerate the same root sets with permutations. `MatrixEncoder`
+and public `MatrixNTTPlan.forward/inverse` implement that canonical ordering.
+Internal matrix multiplication keeps digit order instead: both matrix axes have
+the same permutation, so contraction is unchanged. W order only permutes batches.
 
 ## Multiplication and parameter conditions
 

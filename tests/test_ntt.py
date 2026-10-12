@@ -2,7 +2,50 @@ import pytest
 import torch
 
 from torch_gl import CyclotomicNTTPlan, GaussianNTTPlan, NTTPlan, intt, ntt
-from torch_gl.modular import gaussian_mul
+from torch_gl.modular import arithmetic_context, gaussian_mul
+
+
+@pytest.mark.parametrize("length", [1, 8, 9, 12, 18, 27, 108])
+def test_gs_ct_digit_order_without_reversal(length, monkeypatch):
+    plan = NTTPlan(1297, length)
+    arithmetic = arithmetic_context(plan.q)
+    values = torch.arange(2 * length * 3, dtype=torch.int32).reshape(2, length, 3)
+    natural_slots = plan.forward(values, dim=1)
+    # Independently derive the mixed-radix frequency at each storage position.
+    frequencies = []
+    for position in range(length):
+        remaining, stride, frequency = length, 1, 0
+        while remaining > 1:
+            radix = 2 if remaining % 2 == 0 else 3
+            remaining //= radix
+            digit, position = divmod(position, remaining)
+            frequency += digit * stride
+            stride *= radix
+        frequencies.append(frequency)
+    expected = natural_slots[:, frequencies, :]
+    forward = plan._kernel(torch.device("cpu"), dim=1, permuted=True)
+    inverse = plan._kernel(torch.device("cpu"), dim=1, inverse=True, permuted=True)
+
+    def reject_reordering(*args, **kwargs):
+        raise AssertionError("paired transform must not gather/reverse frequencies")
+
+    monkeypatch.setattr(torch.Tensor, "index_select", reject_reordering)
+    monkeypatch.setattr(torch.Tensor, "flip", reject_reordering)
+    slots = forward(arithmetic.encode(values))
+    assert torch.equal(arithmetic.decode(slots), expected)
+    assert torch.equal(arithmetic.decode(inverse(slots)), values)
+    # Pointwise multiplication must be unchanged by the retained digit order.
+    result = arithmetic.decode(inverse(arithmetic.multiply(slots, slots)))
+    # Obtain a direct cyclic-convolution oracle without invoking natural-order gathers.
+    direct = torch.zeros_like(values)
+    for output_index in range(length):
+        total = torch.zeros((2, 3), dtype=torch.int64)
+        for input_index in range(length):
+            total += values[:, input_index, :].to(torch.int64) * values[
+                :, (output_index - input_index) % length, :
+            ].to(torch.int64)
+        direct[:, output_index, :] = total.remainder(plan.q).to(torch.int32)
+    assert torch.equal(result, direct)
 
 
 @pytest.mark.parametrize("length", [1, 2, 3, 4, 6, 8, 9, 12, 16, 18, 24, 27, 36, 54, 81, 108])

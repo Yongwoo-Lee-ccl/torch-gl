@@ -27,22 +27,26 @@ Full CRT export supports values above int64 and stays outside the arithmetic hot
 
 ## Engine and ciphertext
 
-`Engine` samples a binary coefficient tensor once and encodes it in every limb.
-Both Gaussian channels have coefficients in `{0,1}`. A supplied `secret_key`
-must be binary and match the context and device. In the full X/Y/W ring,
-the default key is sampled in the smaller X/W ring and embedded at Y degree zero.
-The constructor also accepts a key from that smaller ring with the same moduli
-and axis order. `engine.secret_key` returns the full-ring embedding;
-`engine.small_secret_key` returns the smaller-ring value. Decryption accepts either.
-Supplied full-ring binary keys remain supported for ordinary encryption, but
-encrypted matrix multiplication rejects any key depending on Y.
+`create_secret_key(ring, generator=key_generator)` samples a binary coefficient
+tensor once and encodes it in every limb. The generator is required and belongs
+to the caller; use a separate generator for encryption randomness. Both Gaussian
+channels have coefficients in `{0,1}`. In an X/Y/W context the function returns
+a key in the smaller X/W ring, retaining the moduli and relative axis order.
+Other contexts return a key in the supplied ring. Its device defaults to the
+generator's device, and an explicit device must match the generator.
+
+`Engine` never samples or stores a secret key. Encryption and decryption receive
+the key explicitly and embed small-ring keys at Y degree zero temporarily.
+Supplied keys must match the context and device; encryption requires binary
+coefficients. Full-ring binary keys remain supported for ordinary encryption.
+Matrix evaluation needs no key; matrix decryption rejects keys depending on Y.
 
 Each encryption samples uniform `a` independently per limb and one shared error
 tensor `e`. The latter is sampled from a mean-zero normal distribution with
 standard deviation 3.2, rounded to integers, then encoded in every limb.
 It computes `b=-a*s+e+m` and returns `Ciphertext(b,a)`, containing no key or error.
 
-`engine.encrypt(message)` accepts an RNS polynomial, an integer coefficient
+`engine.encrypt(message, secret_key)` accepts an RNS polynomial, an integer coefficient
 tensor, an integer constant, or a Gaussian integer pair.
 `engine.decrypt(ciphertext, secret_key)` returns an RNS polynomial representing
 `b+a*s=m+e` modulo Q. It does not remove noise or apply plaintext scaling.
@@ -54,13 +58,17 @@ AI-written, briefly reviewed, never-use-in-a-product disclaimer applies here.
 
 ```python
 import torch
-from torch_gl import Engine, RNSRing
+
+from torch_gl import Engine, RNSRing, create_secret_key
 
 ring = RNSRing.for_parameters(n=4, p=9, limb_count=3)
 engine = Engine(ring, generator=torch.Generator().manual_seed(1935))
+secret_key = create_secret_key(
+    ring, generator=torch.Generator(device=engine.device).manual_seed(1935 + 100000)
+)
 message = 10000 * ring.generator("X")
-ciphertext = engine.encrypt(message)
-decrypted = engine.decrypt(ciphertext, engine.secret_key)
+ciphertext = engine.encrypt(message, secret_key)
+decrypted = engine.decrypt(ciphertext, secret_key)
 error = decrypted.centered_coefficients() - message.centered_coefficients()
 print(error.abs().max())
 ```
@@ -107,18 +115,22 @@ product is a separate operation.
 
 ```python
 import torch
-from torch_gl import Engine, MatrixEncoder, RNSRing
+
+from torch_gl import Engine, MatrixEncoder, RNSRing, create_secret_key
 
 ring = RNSRing.for_parameters(n=4, p=9, limb_count=4)
 engine = Engine(ring)
+secret_key = create_secret_key(
+    ring, generator=torch.Generator(device=engine.device).manual_seed(1935 + 100000)
+)
 encoder = MatrixEncoder(ring)  # Default Delta=2**40.
 product_decoder = MatrixEncoder(ring, scale=encoder.scale**2)
 left = torch.randn(encoder.slot_shape, dtype=torch.complex128)
 right = torch.randn(encoder.slot_shape, dtype=torch.complex128)
-left_ct = engine.encrypt(encoder.encode(left))
-right_ct = engine.encrypt(encoder.encode(right))
+left_ct = engine.encrypt(encoder.encode(left), secret_key)
+right_ct = engine.encrypt(encoder.encode(right), secret_key)
 product_ct = engine.multiply(left_ct, right_ct)
-recovered = product_decoder.decode(engine.decrypt(product_ct, engine.secret_key))
+recovered = product_decoder.decode(engine.decrypt(product_ct, secret_key))
 print((recovered - left * right).abs().max())
 ```
 
@@ -158,18 +170,22 @@ polynomial multiplication is configured for compilation.
 
 ```python
 import torch
-from torch_gl import Engine, MatrixEncoder, RNSRing
+
+from torch_gl import Engine, MatrixEncoder, RNSRing, create_secret_key
 
 ring = RNSRing.for_parameters(n=4, p=9, limb_count=4)
 engine = Engine(ring)
+secret_key = create_secret_key(
+    ring, generator=torch.Generator(device=engine.device).manual_seed(1935 + 100000)
+)
 encoder = MatrixEncoder(ring)
 decoder = MatrixEncoder(ring, scale=encoder.scale**2)
 left = torch.randn(encoder.slot_shape, dtype=torch.complex128)
 right = torch.randn(encoder.slot_shape, dtype=torch.complex128)
-left_ct = engine.encrypt(encoder.encode(left))
-right_ct = engine.encrypt(encoder.encode(right))
+left_ct = engine.encrypt(encoder.encode(left), secret_key)
+right_ct = engine.encrypt(encoder.encode(right), secret_key)
 product_ct = engine.matrix_multiply(left_ct, right_ct)
-decrypted = engine.decrypt(product_ct, engine.small_secret_key)
+decrypted = engine.decrypt(product_ct, secret_key)
 recovered = decoder.decode(decrypted)
 print((recovered - left @ right.transpose(-1, -2)).abs().max())
 ```
