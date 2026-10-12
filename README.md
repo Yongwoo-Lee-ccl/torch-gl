@@ -173,8 +173,10 @@ Binary-secret symmetric encryption and fixed RNS
 limb composition and scaled complex matrix encoding (§3.1) are implemented.
 Unrelinearized ciphertext multiplication decrypts under `(1,s,s²)` and multiplies
 the plaintext scales. See [homomorphic multiplication](docs/encryption.md#homomorphic-multiplication-before-key-switching).
-Key switching, integer matrix encoding (§4.1), RNS level management, rescaling,
-and bootstrapping are future work.
+SwitchSmall and SwitchBig use Han–Ki grouped RNS decomposition configured by k,
+with Hadamard and matrix relinearization; see [key switching](docs/key_switching.md).
+Integer matrix encoding (§4.1), RNS level management, rescaling, and bootstrapping
+are future work.
 
 ## RNS encryption
 

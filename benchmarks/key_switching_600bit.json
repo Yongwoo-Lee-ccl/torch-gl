@@ -1,0 +1,63 @@
+{
+  "status": "interrupted",
+  "timestamp_utc": "2026-10-12T11:15:54.764530+00:00",
+  "n": 128,
+  "p": 243,
+  "ciphertext_moduli": [
+    1050941953,
+    1051937281,
+    1052061697,
+    1052310529,
+    1052683777,
+    1052808193,
+    1054052353,
+    1054176769,
+    1054674433,
+    1055669761,
+    1056665089,
+    1059775489,
+    1060024321,
+    1060646401,
+    1061392897,
+    1063383553,
+    1063507969,
+    1064627713,
+    1068360193,
+    1068857857
+  ],
+  "ciphertext_modulus_bits": 600,
+  "ciphertext_limb_count": 20,
+  "key_moduli": [
+    1069728769,
+    1070350849,
+    1071221761,
+    1071595009
+  ],
+  "k": 4,
+  "dnum": 5,
+  "key_modulus_bits": 120,
+  "device": "cpu",
+  "torch_version": "2.14.1",
+  "platform": "macOS-26.5.1-arm64-arm-64bit-Mach-O",
+  "cpu_threads": 4,
+  "storage_dtype": "torch.int32",
+  "evaluation_key_storage": "Torch file-backed mmap on CPU; one extended-basis limb at a time",
+  "warmups": 0,
+  "runs": 1,
+  "compiled": false,
+  "polynomial_bytes": 424673280,
+  "plaintext": "10000 constant; encryption error std=3.2; dense uniform ciphertext masks",
+  "operations": {
+    "homomorphic_matrix_multiplication_before_switching": {
+      "seconds": [
+        376.51536324998597
+      ],
+      "average_seconds": 376.51536324998597
+    }
+  },
+  "input_setup_seconds": 51.17015487502795,
+  "evaluation_key_setup_seconds": 177.34924166597193,
+  "evaluation_key_bytes": 10192317104,
+  "interruption_reason": "User requested stopping the benchmark to run it on another machine.",
+  "correctness": "Large-parameter decryption check was not reached; smaller correctness suite passed."
+}

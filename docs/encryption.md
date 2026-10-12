@@ -179,3 +179,9 @@ equations, the explicit key basis, smaller-ring sampling and supplied keys,
 transpose semantics, zero/noisy recovery, compiled ordinary decryption products,
 and p=729. It verifies that Q accommodates coefficient growth and rejects
 Y-dependent secrets.
+
+The unrelinearized APIs above remain available. To reduce a Hadamard or matrix
+product back to `Ciphertext(b,a)`, use `KeySwitcher.relinearize()` or
+`KeySwitcher.relinearize_matrix()`. See [key switching](key_switching.md) for
+the small/big distinction, grouped RNS decomposition configured by k, and
+switching between independent secrets.
