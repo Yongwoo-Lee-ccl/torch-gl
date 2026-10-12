@@ -76,5 +76,5 @@ that decoding at the product scale matches elementwise slot multiplication.
 They cover equal and different input scales, reordered and smaller rings, and
 `p=729`, with bounds for rounding error and aggregate-modulus wraparound.
 The existing naive `10000*X` tests and saved Sage multiplication vectors are unchanged.
-The engine's current full-ring binary key is unchanged; the paper's smaller-ring
-secret embedding remains a separate feature, as documented in the encryption notes.
+X/Y/W engines now sample a binary secret in the smaller X/W ring and embed it
+as constant in Y; see the [encryption notes](encryption.md).

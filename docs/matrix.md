@@ -67,8 +67,10 @@ the full sum, so decoding at `left_scale*right_scale` yields `left @ right`.
 
 The paper's literal `circledast` uses adjoint substitutions and a normalized
 trace, giving `A @ B* / n`. This API computes the ordinary `A @ B` requested
-here. It does not implement encrypted trace multiplication, adjoint APIs,
-key switching, or rescaling.
+here. `engine.matrix_multiply()` extends this kernel to encrypted `A @ B.T`
+using a smaller X/W secret and the four-component key basis described in the
+[encryption notes](encryption.md#encrypted-matrix-multiplication-with-a-transposed-right-input).
+The literal normalized-adjoint operation, key switching, and rescaling remain separate features.
 
 ## Tests
 

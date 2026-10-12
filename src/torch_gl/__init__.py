@@ -1,11 +1,11 @@
 """Exact tensor polynomial arithmetic for Gentry–Lee rings."""
 
 from ._transform_tables import clear_transform_cache
-from .ciphertext import Ciphertext, QuadraticCiphertext
+from .ciphertext import Ciphertext, MatrixProductCiphertext, QuadraticCiphertext
 from .cyclotomic import CyclotomicNTTPlan
 from .encoding import MatrixEncoder
 from .engine import Engine
-from .matrix import MatrixNTTPlan, matrix_multiply
+from .matrix import MatrixNTTPlan, matrix_multiply, matrix_transpose
 from .montgomery import (
     MONTGOMERY_RADIX,
     MontgomeryTensor,
@@ -26,7 +26,9 @@ __all__ = [
     "Engine",
     "MatrixEncoder",
     "MatrixNTTPlan",
+    "MatrixProductCiphertext",
     "matrix_multiply",
+    "matrix_transpose",
     "CyclotomicNTTPlan",
     "GaussianNTTPlan",
     "NTTPlan",

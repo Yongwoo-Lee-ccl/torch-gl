@@ -29,8 +29,13 @@ Full CRT export supports values above int64 and stays outside the arithmetic hot
 
 `Engine` samples a binary coefficient tensor once and encodes it in every limb.
 Both Gaussian channels have coefficients in `{0,1}`. A supplied `secret_key`
-must be binary and match the context and device. The default key uses the full
-engine basis; smaller-ring secret embeddings are a separate future feature.
+must be binary and match the context and device. In the full X/Y/W ring,
+the default key is sampled in the smaller X/W ring and embedded at Y degree zero.
+The constructor also accepts a key from that smaller ring with the same moduli
+and axis order. `engine.secret_key` returns the full-ring embedding;
+`engine.small_secret_key` returns the smaller-ring value. Decryption accepts either.
+Supplied full-ring binary keys remain supported for ordinary encryption, but
+encrypted matrix multiplication rejects any key depending on Y.
 
 Each encryption samples uniform `a` independently per limb and one shared error
 tensor `e`. The latter is sampled from a mean-zero normal distribution with
@@ -122,3 +127,55 @@ the exact noisy decryption equation, eager/compiled paths, and encrypted
 Sage-KAT messages decoded at squared scale. The tests use four limbs and verify
 a coefficient-growth bound below Q/2, including product coefficients above int64.
 Multiplication of an already quadratic ciphertext is outside this initial API.
+
+## Encrypted matrix multiplication with a transposed right input
+
+`engine.matrix_multiply(left_ct,right_ct)` computes the four-component result
+`MatrixProductCiphertext(c00,c10,c01,c11)` in this order:
+
+```text
+c00 = b0 mm b1^T
+c10 = a0 mm b1^T
+c01 = b0 mm a1^T
+c11 = a0 mm a1^T
+```
+
+Here `mm` is the existing NTT-domain matrix multiplication, and `^T` substitutes
+`(X,Y,W)->(Y,X,W)`. `matrix_transpose()` performs this substitution without
+conjugating coefficients or changing W. The resulting plaintext operation
+is batch-wise `A @ B.T`, with W batches independent. It requires X rows and
+Y columns in the encoder layout; W may occur anywhere in the coefficient order.
+
+For a smaller-ring secret `s(X,W)`, decryption evaluates
+`c00+c10*s(X,W)+c01*s(Y,W)+c11*s(X,W)*s(Y,W)`. All these key products are
+ordinary polynomial products. The implementation factors the expression into
+three products, avoiding a separately materialized mixed secret. The exact
+noisy result is `(m0+e0) mm (m1+e1)^T`. Key switching is not performed.
+Equal input scales Delta give output scale Delta^2; the caller supplies this
+scale to the decoder. Matrix contraction currently uses the correctness-oriented
+modular kernel described in [matrix notes](matrix.md), even when ordinary
+polynomial multiplication is configured for compilation.
+
+```python
+import torch
+from torch_gl import Engine, MatrixEncoder, RNSRing
+
+ring = RNSRing.for_parameters(n=4, p=9, limb_count=4)
+engine = Engine(ring)
+encoder = MatrixEncoder(ring)
+decoder = MatrixEncoder(ring, scale=encoder.scale**2)
+left = torch.randn(encoder.slot_shape, dtype=torch.complex128)
+right = torch.randn(encoder.slot_shape, dtype=torch.complex128)
+left_ct = engine.encrypt(encoder.encode(left))
+right_ct = engine.encrypt(encoder.encode(right))
+product_ct = engine.matrix_multiply(left_ct, right_ct)
+decrypted = engine.decrypt(product_ct, engine.small_secret_key)
+recovered = decoder.decode(decrypted)
+print((recovered - left @ right.transpose(-1, -2)).abs().max())
+```
+
+`pytest tests/test_encrypted_matrix_multiplication.py` checks the four component
+equations, the explicit key basis, smaller-ring sampling and supplied keys,
+transpose semantics, zero/noisy recovery, compiled ordinary decryption products,
+and p=729. It verifies that Q accommodates coefficient growth and rejects
+Y-dependent secrets.

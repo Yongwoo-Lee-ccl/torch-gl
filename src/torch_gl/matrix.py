@@ -194,3 +194,24 @@ def matrix_multiply(left: RNSPoly, right: RNSPoly) -> RNSPoly:
             for limb_left, limb_right in zip(left.limbs, right.limbs, strict=True)
         ),
     )
+
+
+def matrix_transpose(polynomial: RNSPoly) -> RNSPoly:
+    """Substitute (X,Y,W)->(Y,X,W), without coefficient conjugation."""
+    if not isinstance(polynomial, RNSPoly):
+        raise TypeError("matrix_transpose requires an RNSPoly")
+    names = tuple(axis.name for axis in polynomial.ring.axes)
+    if "X" not in names or "Y" not in names:
+        raise ValueError("transpose requires X and Y axes")
+    X_dim, Y_dim = names.index("X"), names.index("Y")
+    if polynomial.ring.axes[X_dim].modulus != polynomial.ring.axes[Y_dim].modulus:
+        raise ValueError("transpose requires identical X/Y quotient relations")
+    return RNSPoly(
+        polynomial.ring,
+        tuple(
+            MultivariatePoly._from_owned(
+                limb.ring, limb._coefficients.transpose(X_dim, Y_dim).contiguous()
+            )
+            for limb in polynomial.limbs
+        ),
+    )

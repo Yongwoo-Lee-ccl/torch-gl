@@ -59,3 +59,27 @@ class QuadraticCiphertext:
             for component in components[1:]
         ):
             raise ValueError("ciphertext components must have the same ring and device")
+
+
+@dataclass(frozen=True)
+class MatrixProductCiphertext:
+    """Four components under (1,s(X,W),s(Y,W),s(X,W)*s(Y,W)).
+
+    Ordered as (b0 mm b1^T, a0 mm b1^T, b0 mm a1^T, a0 mm a1^T).
+    No key switching or rescaling is performed; scale multiplies.
+    """
+
+    c00: RNSPoly
+    c10: RNSPoly
+    c01: RNSPoly
+    c11: RNSPoly
+
+    def __post_init__(self) -> None:
+        components = (self.c00, self.c10, self.c01, self.c11)
+        if any(not isinstance(component, RNSPoly) for component in components):
+            raise TypeError("ciphertext components must be RNSPoly values")
+        if any(
+            component.ring != self.c00.ring or component.device != self.c00.device
+            for component in components[1:]
+        ):
+            raise ValueError("ciphertext components must have the same ring and device")
