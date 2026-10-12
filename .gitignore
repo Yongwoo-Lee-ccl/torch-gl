@@ -1,5 +1,6 @@
 __pycache__/
 *.py[cod]
+py.typed
 .venv/
 .pytest_cache/
 .ruff_cache/
@@ -9,3 +10,4 @@ dist/
 .coverage
 htmlcov/
 .DS_Store
+*.pdf

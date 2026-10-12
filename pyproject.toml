@@ -1,0 +1,36 @@
+[build-system]
+requires = ["hatchling>=1.25"]
+build-backend = "hatchling.build"
+
+[project]
+name = "torch-gl"
+version = "0.1.0"
+description = "PyTorch polynomial arithmetic for the Gentry–Lee FHE scheme"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = ["torch>=2.2"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Programming Language :: Python :: 3",
+    "Topic :: Scientific/Engineering :: Mathematics",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8", "ruff>=0.6", "build>=1.2", "hatchling>=1.25"]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/torch_gl"]
+
+[tool.hatch.build.targets.sdist]
+include = ["/src", "/tests", "/scripts", "/docs", "/examples", "/README.md", "/CONTRIBUTING.md", "/CHANGELOG.md", "/pyproject.toml"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-ra"
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP"]
