@@ -161,8 +161,34 @@ The Gaussian transform uses the split map from §5.1. See
 
 `*` is ordinary quotient-ring multiplication, the arithmetic underlying the
 paper's Hadamard product. The matrix product `circledast` is a distinct trace
-operation for a later step. Ciphertexts, encoding, key switching, RNS chains,
-rescaling, and bootstrapping are also future work.
+operation for a later step. Binary-secret symmetric encryption and fixed RNS
+limb composition are implemented. Matrix encoding, key switching, RNS level
+management, rescaling, and bootstrapping are future work.
+
+## RNS encryption
+
+```python
+from torch_gl import Engine, RNSRing
+
+ring = RNSRing.for_parameters(n=4, p=9, limb_count=3)
+engine = Engine(ring)
+message = 10000 * ring.generator("X")
+ciphertext = engine.encrypt(message)
+decrypted = engine.decrypt(ciphertext, engine.secret_key)
+error = decrypted.centered_coefficients() - message.centered_coefficients()
+```
+
+RNS values contain independent 30-bit polynomial blocks. The engine samples a
+shared binary secret and shared rounded Gaussian error with standard deviation
+3.2, computes `b=-a*s+e+m`, and returns `Ciphertext(b,a)`. Decryption returns the
+RNS polynomial `m+e`. Larger coefficients can be exported with exact Python-integer
+CRT reconstruction. Torch sampling is for this research prototype, not secure
+production encryption. See [encryption notes](docs/encryption.md).
+
+```sh
+python examples/encryption.py
+pytest tests/test_rns.py tests/test_engine.py
+```
 
 ## Tests
 
