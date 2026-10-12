@@ -55,6 +55,19 @@ def main():
     if args.threads is not None:
         torch.set_num_threads(args.threads)
     device = torch.device(args.device)
+    if device.type not in {"cpu", "cuda"}:
+        parser.error("exact arithmetic supports CPU and CUDA only")
+    if device.type == "cuda":
+        try:
+            # Initialize before writing the report or allocating evaluation keys.
+            torch.empty(0, device=device)
+        except RuntimeError as error:
+            parser.error(
+                f"cannot initialize {device} with PyTorch {torch.__version__} "
+                f"(CUDA {torch.version.cuda}): {error}\n"
+                "Check nvidia-smi and install a PyTorch CUDA build compatible "
+                "with the NVIDIA driver."
+            )
     moduli, key_moduli = benchmark_moduli(args.n, args.p, math.ceil(args.modulus_bits / 30), args.k)
     ring = RNSRing.multivariate_poly(moduli, args.n, args.p)
     estimated_key_bytes = (

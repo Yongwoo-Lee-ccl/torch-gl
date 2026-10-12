@@ -1,6 +1,6 @@
 {
-  "status": "interrupted",
-  "timestamp_utc": "2026-10-12T11:15:54.764530+00:00",
+  "status": "running",
+  "timestamp_utc": "2026-10-12T13:39:49.382727+00:00",
   "n": 128,
   "p": 243,
   "ciphertext_moduli": [
@@ -37,27 +37,18 @@
   "dnum": 5,
   "key_modulus_bits": 120,
   "device": "cpu",
-  "torch_version": "2.14.1",
-  "platform": "macOS-26.5.1-arm64-arm-64bit-Mach-O",
-  "cpu_threads": 4,
+  "torch_version": "2.14.1+cu130",
+  "platform": "Linux-6.8.0-94-generic-x86_64-with-glibc2.35",
+  "cpu_threads": 24,
   "storage_dtype": "torch.int32",
   "evaluation_key_storage": "Torch file-backed mmap on CPU; one extended-basis limb at a time",
-  "warmups": 0,
-  "runs": 1,
+  "warmups": 1,
+  "runs": 10,
   "compiled": false,
   "polynomial_bytes": 424673280,
   "plaintext": "10000 constant; encryption error std=3.2; dense uniform ciphertext masks",
-  "operations": {
-    "homomorphic_matrix_multiplication_before_switching": {
-      "seconds": [
-        376.51536324998597
-      ],
-      "average_seconds": 376.51536324998597
-    }
-  },
-  "input_setup_seconds": 51.17015487502795,
-  "evaluation_key_setup_seconds": 177.34924166597193,
-  "evaluation_key_bytes": 10192317104,
-  "interruption_reason": "User requested stopping the benchmark to run it on another machine.",
-  "correctness": "Large-parameter decryption check was not reached; smaller correctness suite passed."
+  "operations": {},
+  "input_setup_seconds": 77.77975549921393,
+  "evaluation_key_setup_seconds": 170.52431913744658,
+  "evaluation_key_bytes": 10192317104
 }

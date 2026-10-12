@@ -1,0 +1,90 @@
+{
+  "status": "complete",
+  "timestamp_utc": "2026-10-12T13:58:02.615587+00:00",
+  "n": 128,
+  "p": 243,
+  "ciphertext_moduli": [
+    1050941953,
+    1051937281,
+    1052061697,
+    1052310529,
+    1052683777,
+    1052808193,
+    1054052353,
+    1054176769,
+    1054674433,
+    1055669761,
+    1056665089,
+    1059775489,
+    1060024321,
+    1060646401,
+    1061392897,
+    1063383553,
+    1063507969,
+    1064627713,
+    1068360193,
+    1068857857
+  ],
+  "ciphertext_modulus_bits": 600,
+  "ciphertext_limb_count": 20,
+  "key_moduli": [
+    1069728769,
+    1070350849,
+    1071221761,
+    1071595009
+  ],
+  "k": 4,
+  "dnum": 5,
+  "key_modulus_bits": 120,
+  "device": "cuda:0",
+  "torch_version": "2.6.0+cu124",
+  "platform": "Linux-6.8.0-94-generic-x86_64-with-glibc2.35",
+  "cpu_threads": 24,
+  "storage_dtype": "torch.int32",
+  "evaluation_key_storage": "Torch file-backed mmap on CPU; one extended-basis limb at a time",
+  "warmups": 1,
+  "runs": 10,
+  "compiled": false,
+  "polynomial_bytes": 424673280,
+  "plaintext": "10000 constant; encryption error std=3.2; dense uniform ciphertext masks",
+  "operations": {
+    "homomorphic_matrix_multiplication_before_switching": {
+      "seconds": [
+        11.7370396386832,
+        11.834299377165735,
+        12.12611366249621,
+        12.393209548667073,
+        12.026774399913847,
+        11.94211716670543,
+        11.880830081179738,
+        11.468011026270688,
+        11.658781723119318,
+        12.874441709369421
+      ],
+      "average_seconds": 11.994161833357065
+    },
+    "matrix_relinearization_two_switch_big": {
+      "seconds": [
+        18.484978492371738,
+        17.8743603406474,
+        17.63623658195138,
+        17.748490119352937,
+        17.530343733727932,
+        17.474563585594296,
+        17.895116203464568,
+        17.6452604746446,
+        17.587331130169332,
+        17.911751598119736
+      ],
+      "average_seconds": 17.77884322600439
+    }
+  },
+  "input_setup_seconds": 2.7183555951341987,
+  "evaluation_key_setup_seconds": 25.189354706555605,
+  "evaluation_key_bytes": 10192304232,
+  "correctness": {
+    "all_limb_consistent_small_CRT_error": true,
+    "max_absolute_switching_error": 78414,
+    "checked_coefficients": 5308416
+  }
+}
