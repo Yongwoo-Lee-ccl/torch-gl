@@ -68,6 +68,15 @@ custom_ring = PolynomialRing(
 
 ## NTTs and multiplication
 
+The [code-level NTT walkthrough](docs/ntt.md) explains the tensor layouts,
+GS-forward/CT-inverse butterflies, twists, and cached tables. The
+[example guide](docs/examples.md) covers transforms and small/big key switching.
+
+```sh
+python examples/ntt.py
+python examples/key_switching.py --case all --k 2
+```
+
 - `NTTPlan(q, length)` supports mixed-radix lengths `2^a * 3^b`, requiring
   `length | q-1`. `ntt` and `intt` are convenience functions.
 - `CyclotomicNTTPlan(q, p)` implements a compact `phi(p)`-slot transform for
