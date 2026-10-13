@@ -66,10 +66,16 @@ class GaussianNTTPlan:
             if inverse
             else (self.root, pow(self.root, -1, self.q))
         )
-        twists = device_powers(self.q, roots, self.length, str(values.device))
+        twists = device_powers(
+            self.q,
+            roots,
+            self.length,
+            str(values.device),
+            scale=pow(self.length, -1, self.q) if inverse else 1,
+        )
         if inverse:
             branches = torch.stack((positive, _reverse_frequencies(negative)), dim=-2)
-            transformed = plan._transform_residues(branches, inverse=True)
+            transformed = plan._kernel(values.device, inverse=True, normalize=False)(branches)
             transformed = arithmetic.multiply(transformed, twists)
             positive, negative = transformed.unbind(-2)
         else:
@@ -90,11 +96,19 @@ class GaussianNTTPlan:
     def prepare(self, device: torch.device | str = "cpu") -> "GaussianNTTPlan":
         device = resolve_device(device)
         NTTPlan(self.q, self.length, pow(self.root, 4, self.q)).prepare(device)
-        for roots in (
-            (self.root, pow(self.root, -1, self.q)),
-            (pow(self.root, -1, self.q), self.root),
-        ):
-            device_powers(self.q, roots, self.length, str(device))
+        for inverse in (False, True):
+            roots = (
+                (pow(self.root, -1, self.q), self.root)
+                if inverse
+                else (self.root, pow(self.root, -1, self.q))
+            )
+            device_powers(
+                self.q,
+                roots,
+                self.length,
+                str(device),
+                scale=pow(self.length, -1, self.q) if inverse else 1,
+            )
         return self
 
     def forward(self, values: torch.Tensor, *, dim: int = -2) -> torch.Tensor:

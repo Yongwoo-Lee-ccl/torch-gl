@@ -41,6 +41,12 @@ it does not establish a corresponding GPU ratio.
   once; it no longer stacks a full butterfly tensor and then concatenates another
   full copy after multiplying twiddles. Eager stages still allocate temporaries;
   the paired ordering alone does not provide a fused or in-place GPU kernel.
+- Montgomery reduction reuses fresh local product and cancellation buffers.
+  Operands and cached tables are never modified. CPU final correction reduces
+  the fresh int32 output in place; CUDA retains conditional correction.
+- X/Y and compact W inverse transforms include normalization in cached inverse
+  twists, avoiding a separate full-tensor multiplication. A length-one cyclic
+  inverse skips multiplication by one.
 - Matrix multiplication transforms only W and contracts X/Y coefficient matrices.
   Exact 15-bit partial products use one batched float64 GEMM, followed by integer
   modular recombination. See [matrix notes](matrix.md) for the exactness bound.
@@ -116,14 +122,45 @@ Montgomery pipeline. Small batches can be dominated by Python and compiler
 dispatch overhead; a compiled path is not necessarily faster for every shape.
 Fresh measurements should include encoding/decoding and full transform costs.
 
-The current int32 pipeline was checked on a dense polynomial times `X*Y*W`,
+The int32 pipeline was also checked on a dense polynomial times `X*Y*W`,
 using independent coefficient shifts and quotient reduction as the oracle.
 At `n=128`, `p=243`, `q=541582849`, three warmups followed by ten compiled CPU
 products averaged 0.187 s. Each polynomial occupied 21,233,664 bytes, compared
 with 42,467,328 bytes for int64 storage. The earlier compiled int64 measurement
-averaged 0.274 s. These are individual CPU measurements, not GPU performance
+averaged 0.274 s. These are historical CPU measurements, not GPU performance
 claims or a guarantee for other workloads. Metadata is saved in
 [`benchmarks/native_multiply_int32.json`](../benchmarks/native_multiply_int32.json).
+
+## Simple allocation and normalization savings
+
+The latest comparison loaded the original source at revision
+`aed517ec57e3995c4054df4bc22f8c48c4dcc30d` and the optimized source as independent
+packages in one process. Every operation used identical inputs and produced
+exactly equal output tensors. It used one 30-bit limb (`q=537725953`), four CPU
+threads, two warmups, and 16 measured runs, alternating execution order each
+round. These are eager CPU medians, including public representation conversions
+where applicable; there are no GPU or compiled throughput measurements here.
+
+| Operation | Before | After | Speedup |
+| --- | ---: | ---: | ---: |
+| Cyclic forward, `(4096,128)` | 11.43 ms | 10.46 ms | 1.09x |
+| Compact W inverse, `p=243`, `(64,64,162,2)` | 36.97 ms | 27.21 ms | 1.36x |
+| Native inverse, `n=64, p=243` | 83.20 ms | 59.95 ms | 1.39x |
+| Polynomial multiplication, `n=64, p=243` | 228.90 ms | 171.10 ms | 1.34x |
+| Plaintext matrix multiplication, `n=64, p=243` | 133.96 ms | 108.27 ms | 1.24x |
+
+For one elementwise Montgomery multiplication of `(4096,128)` tensors, the
+profiler recorded total positive allocation traffic of 44,564,504 bytes before
+and 18,874,388 bytes after, about 58% less. This counts allocated bytes across
+the operation; it is not a peak resident-memory measurement. Stored residues
+and cached tables remain int32, with temporary int64 arithmetic.
+
+The complete samples, shapes, environment, and correctness checks are saved in
+[`ntt_simple_optimizations_cpu.json`](../benchmarks/ntt_simple_optimizations_cpu.json).
+These changes reuse ordinary Torch scratch buffers and combine fixed constants
+in cached tables. They preserve the transform roots, GS/CT ordering, quotient
+relations, matrix contraction, and public APIs. The full ciphertext/key-switch
+benchmark above predates these changes and has not been rerun for this comparison.
 
 ## GPU limits
 

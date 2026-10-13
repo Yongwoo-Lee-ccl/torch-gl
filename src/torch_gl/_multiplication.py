@@ -40,20 +40,25 @@ def native_multiplier(ring, device: torch.device, backend: str | None = None):
             forward_twist = device_powers(ring.q, roots, plan.length, str(device)).T.reshape(
                 forward_shape
             )
-            inverse_twist = device_powers(ring.q, roots[::-1], plan.length, str(device)).T.reshape(
-                inverse_shape
+            inverse_twist = device_powers(
+                ring.q,
+                roots[::-1],
+                plan.length,
+                str(device),
+                scale=pow(plan.length, -1, ring.q),
+            ).T.reshape(inverse_shape)
+            inverse_kernel = shared_plan._kernel(
+                device, dim=axis_index, inverse=True, permuted=True, normalize=False
             )
         else:
             shared_plan = plan
+            inverse_kernel = shared_plan._kernel(
+                device, dim=axis_index, inverse=True, permuted=True
+            )
         forward_steps.append(
             (shared_plan._kernel(device, dim=axis_index + 1, permuted=True), forward_twist)
         )
-        inverse_steps.append(
-            (
-                shared_plan._kernel(device, dim=axis_index, inverse=True, permuted=True),
-                inverse_twist,
-            )
-        )
+        inverse_steps.append((inverse_kernel, inverse_twist))
     forward_steps, inverse_steps = tuple(forward_steps), tuple(reversed(inverse_steps))
     inverse_two = arithmetic.constant(pow(2, -1, ring.q))
     encoded_imaginary = arithmetic.constant(imaginary_root) if imaginary_root is not None else None

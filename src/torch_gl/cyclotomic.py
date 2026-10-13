@@ -63,14 +63,22 @@ class CyclotomicNTTPlan:
         arithmetic = arithmetic_context(self.q)
         block_length = self.p // 3
         plan = NTTPlan(self.q, block_length, pow(self.root, 3, self.q))
-        branch_kernel = plan._kernel(device, inverse=inverse, permuted=permuted)
+        # The inverse's 1/block_length factor belongs in the cached untwist,
+        # avoiding a separate full-tensor Montgomery multiplication.
+        branch_kernel = plan._kernel(device, inverse=inverse, permuted=permuted, normalize=False)
         omega = pow(self.root, block_length, self.q)
         encoded_omega = arithmetic.constant(omega)
         inverse_difference = arithmetic.constant(pow((omega - omega * omega) % self.q, -1, self.q))
         roots = tuple(
             pow(self.root, -root_class if inverse else root_class, self.q) for root_class in (1, 2)
         )
-        twists = device_powers(self.q, roots, block_length, str(device))
+        twists = device_powers(
+            self.q,
+            roots,
+            block_length,
+            str(device),
+            scale=pow(block_length, -1, self.q) if inverse else 1,
+        )
         cube_roots = device_powers(self.q, (omega,), 3, str(device))[0, 1:].unsqueeze(-1)
 
         def kernel(values: torch.Tensor) -> torch.Tensor:
@@ -100,7 +108,13 @@ class CyclotomicNTTPlan:
         NTTPlan(self.q, block_length, pow(self.root, 3, self.q)).prepare(device)
         for sign in (1, -1):
             roots = tuple(pow(self.root, sign * root_class, self.q) for root_class in (1, 2))
-            device_powers(self.q, roots, block_length, str(device))
+            device_powers(
+                self.q,
+                roots,
+                block_length,
+                str(device),
+                scale=pow(block_length, -1, self.q) if sign == -1 else 1,
+            )
         device_powers(self.q, (pow(self.root, block_length, self.q),), 3, str(device))
         return self
 

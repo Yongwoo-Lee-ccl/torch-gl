@@ -153,7 +153,9 @@ class NTTPlan:
         dim: int = -1,
         inverse: bool = False,
         permuted: bool = False,
+        normalize: bool = True,
     ) -> Callable[[torch.Tensor], torch.Tensor]:
+        """Bind a raw Montgomery kernel; callers folding 1/L into a twist use normalize=False."""
         arithmetic = arithmetic_context(self.q)
         root = pow(self.root, -1, self.q) if inverse else self.root
         tables = stage_tables(self.q, root, self.length, str(device))
@@ -167,7 +169,8 @@ class NTTPlan:
                 transformed = transformed.index_select(-1, order[0])
             transformed = _paired_dft(transformed, arithmetic, tables, constants, inverse=inverse)
             if inverse:
-                transformed = arithmetic.multiply(transformed, normalization)
+                if normalize and self.length > 1:
+                    transformed = arithmetic.multiply(transformed, normalization)
             elif order is not None:
                 transformed = transformed.index_select(-1, order[1])
             return transformed.movedim(-1, dim)

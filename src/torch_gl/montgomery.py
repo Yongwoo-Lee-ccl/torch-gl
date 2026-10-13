@@ -27,9 +27,15 @@ def _montgomery_product(
     left_wide = left.to(torch.int64)
     right_wide = right.to(torch.int64) if isinstance(right, torch.Tensor) else right
     product = left_wide * right_wide
-    cancellation = ((product & _RADIX_MASK) * negative_inverse) & _RADIX_MASK
+    # Only fresh local buffers are mutated; operands and cached tables remain
+    # untouched, including when they are noncontiguous or broadcast views.
+    cancellation = product & _RADIX_MASK
+    cancellation.mul_(negative_inverse).bitwise_and_(_RADIX_MASK).mul_(q)
+    product.add_(cancellation).bitwise_right_shift_(_RADIX_BITS)
     # REDC is below 2q < 2**31, so even the final correction uses int32.
-    reduced = ((product + cancellation * q) >> _RADIX_BITS).to(torch.int32)
+    reduced = product.to(torch.int32)
+    if left.device.type == "cpu":
+        return reduced.remainder_(q)
     return torch.where(reduced >= q, reduced - q, reduced)
 
 

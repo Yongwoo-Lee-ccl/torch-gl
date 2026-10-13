@@ -113,13 +113,23 @@ class MatrixNTTPlan:
                 roots = (root, pow(root, -1, ring.q))
                 twist = device_powers(ring.q, roots, self.n, str(self.device)).T.reshape(shape)
                 inverse_twist = device_powers(
-                    ring.q, roots[::-1], self.n, str(self.device)
+                    ring.q,
+                    roots[::-1],
+                    self.n,
+                    str(self.device),
+                    scale=pow(self.n, -1, ring.q),
                 ).T.reshape(shape)
+                inverse_kernel = shared_plan._kernel(
+                    self.device, dim=dim, inverse=True, permuted=True, normalize=False
+                )
                 positive_order = [(pow(5, slot, 4 * self.n) - 1) // 4 for slot in range(self.n)]
                 negative_order = [(-index) % self.n for index in positive_order]
                 digit_order = _digit_order(self.n)
             else:
                 shared_plan = plan
+                inverse_kernel = shared_plan._kernel(
+                    self.device, dim=dim, inverse=True, permuted=True
+                )
                 stride = self.p // 3
 
                 def compact_index(exponent, stride=stride):
@@ -155,7 +165,7 @@ class MatrixNTTPlan:
             self._inverse_steps.append(
                 (
                     dim,
-                    shared_plan._kernel(self.device, dim=dim, inverse=True, permuted=True),
+                    inverse_kernel,
                     inverse_twist,
                     inverse_permutations,
                 )

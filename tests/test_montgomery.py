@@ -8,6 +8,7 @@ from torch_gl import (
     to_montgomery_form,
     to_normal_form,
 )
+from torch_gl.montgomery import montgomery_context
 
 DEVICES = ["cpu"] + (["cuda"] if torch.cuda.is_available() else [])
 
@@ -54,6 +55,28 @@ def test_broadcasting_normalization_and_defensive_copies():
     # Use Python integers as the independent oracle for all intermediates.
     expected = [[(int(value) % q) * factor % q for factor in (2, q - 1)] for value in values]
     assert to_normal_form(product).tolist() == expected
+
+
+@pytest.mark.parametrize("device", DEVICES)
+@pytest.mark.parametrize("dtype", [torch.int32, torch.int64])
+def test_reduction_scratch_does_not_mutate_noncontiguous_or_broadcast_operands(device, dtype):
+    q = (1 << 30) - 1
+    left = (
+        torch.tensor([0, 1, q - 1, q - 2, q // 2, q // 3] * 4, dtype=dtype, device=device)
+        .reshape(2, 3, 4)
+        .transpose(0, 2)
+    )
+    right = torch.tensor([q - 1, q - 2, q // 2], dtype=dtype, device=device).reshape(1, 3, 1)
+    original_left, original_right = left.clone(), right.clone()
+    assert not left.is_contiguous()
+    expected = (
+        left.to(torch.int64) * right.to(torch.int64) % q * pow(MONTGOMERY_RADIX, -1, q)
+    ).remainder(q)
+    product = montgomery_context(q).multiply(left, right)
+    assert product.dtype == torch.int32
+    assert torch.equal(product, expected)
+    assert torch.equal(left, original_left)
+    assert torch.equal(right, original_right)
 
 
 def test_representation_and_modulus_errors():

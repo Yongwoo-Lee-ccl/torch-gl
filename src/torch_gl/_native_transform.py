@@ -46,14 +46,20 @@ class NativeTransform:
                 roots = (root, pow(root, -1, ring.q))
                 twist = device_powers(ring.q, roots, plan.length, str(device)).T.reshape(shape)
                 inverse_twist = device_powers(
-                    ring.q, roots[::-1], plan.length, str(device)
+                    ring.q,
+                    roots[::-1],
+                    plan.length,
+                    str(device),
+                    scale=pow(plan.length, -1, ring.q),
                 ).T.reshape(shape)
+                inverse_kernel = shared._kernel(
+                    device, dim=dim, inverse=True, permuted=True, normalize=False
+                )
             else:
                 shared = plan
+                inverse_kernel = shared._kernel(device, dim=dim, inverse=True, permuted=True)
             self._forward_steps.append((shared._kernel(device, dim=dim, permuted=True), twist))
-            self._inverse_steps.append(
-                (shared._kernel(device, dim=dim, inverse=True, permuted=True), inverse_twist)
-            )
+            self._inverse_steps.append((inverse_kernel, inverse_twist))
         self._inverse_steps.reverse()
 
     def forward(self, coefficients):

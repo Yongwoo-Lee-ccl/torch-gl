@@ -60,6 +60,8 @@ Inside the kernel, arithmetic stays in Montgomery form with `R=2^31`.
 temporary int64 products and returning canonical int32 values. Twiddles and
 butterfly constants are already Montgomery-encoded. Normalization is therefore
 an ordinary call to the same multiplication function, with the encoded inverse L.
+The public cyclic inverse performs this multiplication explicitly. Twisted
+inverse transforms fold it into their cached inverse-twist tables instead.
 
 An internal `_kernel(..., permuted=True)` takes and returns raw Montgomery
 tensors. Passing ordinary coefficients directly to it is incorrect. Public
@@ -121,12 +123,24 @@ multiply output branch r by twiddle[r]
 stack the branches once and flatten the grouped dimensions
 ```
 
-In a radix-2 stage, the outputs are:
+In a radix-2 stage, the implementation operates on whole branch tensors:
 
-```text
-output_0[j] = first[j] + second[j]
-output_1[j] = (first[j] - second[j]) * stage_root**j
+```python
+first_branch, second_branch = branches
+output_0 = arithmetic.add(first_branch, second_branch)
+output_1 = arithmetic.subtract(first_branch, second_branch)
+# GS applies the cached twiddle vector after the butterfly.
+# Skip this multiplication when branch_length == 1.
+if branch_length > 1:
+    output_1 = arithmetic.multiply(output_1, twiddle_vector)
 ```
+
+`arithmetic.add()` performs tensor `first_branch + second_branch` followed by
+modular reduction; subtraction works the same way. The cached twiddle vector
+contains `stage_root**j` at each position and broadcasts across every group and
+batch. There is no `first_branch[j]` access or Python loop over `j` during the
+transform. Selecting one of the two or three branch views is not indexing
+individual coefficients.
 
 All operations reduce modulo q. Output is in mixed-radix digit order, which is
 bit-reversed frequency order for powers of two.
@@ -149,14 +163,28 @@ operation, and inverse transform.
 
 ### Radix-3 butterfly
 
-`_butterfly()` uses `omega²=-1-omega`, valid for a primitive cube root, to compute:
+`_butterfly()` uses `omega²=-1-omega`, valid for a primitive cube root. Its
+radix-3 operations also process whole branch tensors:
 
-```text
-weighted_difference = (second - third) * omega
-output_0 = first + second + third
-output_1 = first - third + weighted_difference
-output_2 = first - second - weighted_difference
+```python
+first_branch, second_branch, third_branch = branches
+weighted_difference = arithmetic.multiply(
+    arithmetic.subtract(second_branch, third_branch), omega
+)
+output_0 = arithmetic.add(
+    arithmetic.add(first_branch, second_branch), third_branch
+)
+output_1 = arithmetic.add(
+    arithmetic.subtract(first_branch, third_branch), weighted_difference
+)
+output_2 = arithmetic.subtract(
+    arithmetic.subtract(first_branch, second_branch), weighted_difference
+)
 ```
+
+`omega` is a Montgomery-encoded scalar broadcast over the tensors. The two
+cached twiddle vectors likewise broadcast over groups and batches, without
+Python coefficient indexing.
 
 This needs one constant multiplication instead of evaluating four separate
 omega/omega² products. GS applies the two branch twiddles afterwards; CT applies
@@ -201,8 +229,11 @@ branches. Its evaluation points are `rho*(rho^4)^k` and
 `rho^-1*(rho^4)^k`, respectively. Their n-th powers are I and -I, so these
 transforms enforce the binomial ideal rather than `X^n-1`.
 
-Both branches retain their internal ordering through multiplication. Inverse
-NTTs are followed by inverse twists. Gaussian coefficients are recovered with:
+Both branches retain their internal ordering through multiplication. The inverse
+uses an unnormalized CT kernel (`normalize=False`) followed by cached twists
+`n^-1 * rho^-j` and `n^-1 * rho^j`. Combining normalization with untwisting
+removes one full-tensor multiplication per X/Y inverse while preserving the
+same result. Gaussian coefficients are recovered with:
 
 ```text
 real = (positive + negative) / 2
@@ -246,6 +277,11 @@ upper = (first - second) / (omega - omega**2)
 lower = first - omega*upper
 ```
 
+Its cached inverse twists include `stride^-1`, so the two inverse branch NTTs
+also skip a separate normalization pass. Scaling happens only when these
+tables are constructed, not during a warm transform. Length-one cyclic
+transforms skip multiplication by their unity normalization factor.
+
 Public slots place root class 1 before class 2, each in natural k order.
 Internal slots retain radix-3 digit order separately within each class. For
 p=729, the transform has 486 slots, with two length-243 subtransforms.
@@ -276,8 +312,13 @@ the canonical encoder order; see [matrix notes](matrix.md).
 For B independent transforms of length L, stage arithmetic is O(B*L*log L).
 Each stage processes all values with tensor operations, and its output allocation
 has O(B*L) elements. A moved or strided tensor may require a reshape copy.
-Eager Montgomery arithmetic still allocates local int64 temporaries; this is
-not an in-place or fully fused GPU butterfly kernel.
+Eager Montgomery arithmetic still allocates local int64 temporaries. Reduction
+reuses its fresh product and cancellation buffers in place; it never modifies
+input operands, broadcast views, or cached twiddles. CPU final correction uses
+in-place remainder on the fresh int32 result; CUDA keeps conditional correction.
+This is not an in-place or fully fused GPU butterfly kernel. See
+[performance notes](performance.md#simple-allocation-and-normalization-savings)
+for the measured CPU effect.
 
 Twiddle tensors and prepared kernels have bounded device caches. `prepare(device)`
 warms the public tables, while `clear_transform_cache()` releases tensor/kernel

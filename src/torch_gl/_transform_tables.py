@@ -26,10 +26,14 @@ def powers(q: int, root: int, length: int) -> tuple[int, ...]:
 
 
 @lru_cache(maxsize=128)
-def device_powers(q: int, roots: tuple[int, ...], length: int, device: str) -> torch.Tensor:
+def device_powers(
+    q: int, roots: tuple[int, ...], length: int, device: str, *, scale: int = 1
+) -> torch.Tensor:
+    """Montgomery power rows, optionally scaled to fold inverse normalization into a twist."""
     arithmetic = arithmetic_context(q)
     rows = [
-        tuple(arithmetic.constant(value) for value in powers(q, root, length)) for root in roots
+        tuple(arithmetic.constant(value * scale % q) for value in powers(q, root, length))
+        for root in roots
     ]
     return torch.tensor(rows, dtype=torch.int32, device=device)
 
