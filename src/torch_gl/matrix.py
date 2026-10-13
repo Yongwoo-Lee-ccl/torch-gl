@@ -23,19 +23,47 @@ def _reorder_branches(values, dim, permutations):
 
 
 def _matrix_product_residues(left, right, arithmetic):
-    """Batched modular matmul, reducing after each inner-index product.
+    """Exact modular GEMM with two 15-bit parts and one float64 bmm.
 
-    Shapes are (W, row, column, split). No unreduced int64 dot-product sums:
-    even a short dot product of 30-bit residues can overflow int64.
+    Shapes are (W,row,column,split). Each partial dot product is a sum of
+    nonnegative integer products smaller than 2**30. Under the checked bound,
+    all partial sums and their cross sum are exact float64 integers, including
+    FMA evaluation. Recombination reduces before shifts, avoiding int64 overflow.
+    Inputs and output remain int32 Montgomery residues.
     """
-    output = torch.zeros_like(left)
-    for inner_index in range(left.shape[2]):
-        term = arithmetic.multiply(
-            left[:, :, inner_index, :].unsqueeze(2),
-            right[:, inner_index, :, :].unsqueeze(1),
-        )
-        output = arithmetic.add(output, term)
-    return output
+    n = left.shape[2]
+    part_bits, part_mask = 15, (1 << 15) - 1
+    if 2 * n * part_mask**2 > 1 << 53:
+        raise ValueError("matrix dimension exceeds the exact float64 partial-sum bound")
+    left_matrices = left.permute(0, 3, 1, 2).reshape(-1, n, n)
+    right_matrices = right.permute(0, 3, 1, 2).reshape(-1, n, n)
+    left_packed = torch.cat(
+        (
+            (left_matrices & part_mask).to(torch.float64),
+            (left_matrices >> part_bits).to(torch.float64),
+        ),
+        dim=1,
+    )
+    right_packed = torch.cat(
+        (
+            (right_matrices & part_mask).to(torch.float64),
+            (right_matrices >> part_bits).to(torch.float64),
+        ),
+        dim=2,
+    )
+    parts = torch.bmm(left_packed, right_packed)
+    low = parts[:, :n, :n].to(torch.int64).remainder(arithmetic.q)
+    cross = (parts[:, :n, n:] + parts[:, n:, :n]).to(torch.int64).remainder(arithmetic.q)
+    high = parts[:, n:, n:].to(torch.int64).remainder(arithmetic.q)
+    # Each reduced part is <q<2**30: the complete expression is <2**61.
+    combined = (
+        (low + (cross << part_bits) + (high << (2 * part_bits)))
+        .remainder(arithmetic.q)
+        .to(torch.int32)
+    )
+    # GEMM multiplies two Montgomery operands (R**2); one REDC restores R.
+    output = arithmetic.decode(combined)
+    return output.reshape(left.shape[0], 2, n, n).permute(0, 2, 3, 1).contiguous()
 
 
 class MatrixNTTPlan:
@@ -69,6 +97,7 @@ class MatrixNTTPlan:
         # matters when X/Y are reordered, since transposition reverses products.
         self._slot_dims = (W_dim,) + tuple(dim for dim in range(3) if dim != W_dim) + (3,)
         self._coefficient_dims = tuple(self._slot_dims.index(dim) for dim in range(4))
+        self._transpose_dims = (X_dim, Y_dim)
         self._arithmetic = arithmetic_context(ring.q)
         root = plans[X_dim].root
         self.imaginary_root = pow(root, self.n, ring.q)
@@ -137,6 +166,17 @@ class MatrixNTTPlan:
         self._inverse_two_imaginary = self._arithmetic.constant(
             pow(2 * self.imaginary_root, -1, ring.q)
         )
+        self._W_forward = plans[W_dim]._kernel(self.device, dim=W_dim, permuted=True)
+        self._W_inverse = plans[W_dim]._kernel(self.device, dim=W_dim, inverse=True, permuted=True)
+        self._trace_factor = self._arithmetic.constant(self.n)
+        self._split_imaginary = torch.tensor(
+            (
+                self._encoded_imaginary,
+                self._arithmetic.constant(-self.imaginary_root),
+            ),
+            dtype=torch.int32,
+            device=self.device,
+        )
 
     def _check_polynomial(self, polynomial):
         if not isinstance(polynomial, MultivariatePoly):
@@ -188,12 +228,72 @@ class MatrixNTTPlan:
     def multiply(self, left: MultivariatePoly, right: MultivariatePoly) -> MultivariatePoly:
         self._check_polynomial(left)
         self._check_polynomial(right)
+        # Contract X/Y coefficient matrices, transforming W alone. For the
+        # ordinary slot product, sum_k zeta_k**(s+t) is n at s+t=0 and
+        # n*i at s+t=n. Thus C=n*L*prepared_R, with prepared_R[0]=R[0]
+        # and prepared_R[s]=i*R[n-s] for 1<=s<n.
+        left_slots = self._coefficient_slots(left._coefficients)
+        right_slots = self._right_coefficient_slots(right._coefficients)
+        return self._product_from_coefficient_slots(left_slots, right_slots)
+
+    def _right_coefficient_slots(self, coefficients):
+        right_slots = self._coefficient_slots(coefficients)
+        return torch.cat(
+            (
+                right_slots[:, :1],
+                self._arithmetic.multiply(right_slots[:, 1:].flip(1), self._split_imaginary),
+            ),
+            dim=1,
+        )
+
+    def _multiply_ciphertext_components(self, left_b, left_a, right_b, right_a):
+        """Reuse four W transforms for the four encrypted product components."""
+        left_b_slots = self._coefficient_slots(left_b._coefficients)
+        left_a_slots = self._coefficient_slots(left_a._coefficients)
+        right_b_slots = self._right_coefficient_slots(
+            right_b._coefficients.transpose(*self._transpose_dims)
+        )
+        right_a_slots = self._right_coefficient_slots(
+            right_a._coefficients.transpose(*self._transpose_dims)
+        )
+        return (
+            self._product_from_coefficient_slots(left_b_slots, right_b_slots),
+            self._product_from_coefficient_slots(left_a_slots, right_b_slots),
+            self._product_from_coefficient_slots(left_b_slots, right_a_slots),
+            self._product_from_coefficient_slots(left_a_slots, right_a_slots),
+        )
+
+    def _product_from_coefficient_slots(self, left_slots, right_slots):
         slots = _matrix_product_residues(
-            self._forward_residues(left._coefficients, canonical=False),
-            self._forward_residues(right._coefficients, canonical=False),
+            left_slots,
+            right_slots,
             self._arithmetic,
         )
-        return self._inverse_residues(slots, canonical=False)
+        values = self._W_inverse(
+            self._arithmetic.multiply(slots, self._trace_factor).permute(self._coefficient_dims)
+        )
+        positive, negative = values.unbind(-1)
+        real = self._arithmetic.multiply(
+            self._arithmetic.add(positive, negative), self._inverse_two
+        )
+        imag = self._arithmetic.multiply(
+            self._arithmetic.subtract(positive, negative), self._inverse_two_imaginary
+        )
+        coefficients = self._arithmetic.decode(torch.stack((real, imag), -1))
+        return MultivariatePoly._from_owned(self.ring, coefficients)
+
+    def _coefficient_slots(self, coefficients):
+        """W digit-order slots; X/Y remain coefficient indices for contraction."""
+        real, imag = self._arithmetic.encode(coefficients).unbind(-1)
+        component = self._arithmetic.multiply(imag, self._encoded_imaginary)
+        values = torch.stack(
+            (
+                self._arithmetic.add(real, component),
+                self._arithmetic.subtract(real, component),
+            ),
+            -1,
+        )
+        return self._W_forward(values).permute(self._slot_dims).contiguous()
 
 
 @lru_cache(maxsize=32)

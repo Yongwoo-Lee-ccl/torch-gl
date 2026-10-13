@@ -82,8 +82,9 @@ Public transforms use arithmetic frequency order. The encoding in §4.1 uses
 `rho^(5^j)` for X/Y and `eta^(gamma^ell)` for W, with inverse roots on its negative
 branch. These enumerate the same root sets with permutations. `MatrixEncoder`
 and public `MatrixNTTPlan.forward/inverse` implement that canonical ordering.
-Internal matrix multiplication keeps digit order instead: both matrix axes have
-the same permutation, so contraction is unchanged. W order only permutes batches.
+Internal matrix multiplication contracts X/Y coefficient matrices with only a
+W transform. It retains W digit order, which only permutes independent batches;
+X/Y slot-order permutations and transforms are unnecessary on this path.
 
 ## Multiplication and parameter conditions
 

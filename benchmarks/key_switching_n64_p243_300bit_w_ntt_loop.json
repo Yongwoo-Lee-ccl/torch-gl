@@ -1,0 +1,66 @@
+{
+  "status": "complete",
+  "timestamp_utc": "2026-10-12T15:07:40.256687+00:00",
+  "n": 64,
+  "p": 243,
+  "ciphertext_moduli": [
+    1064627713,
+    1065063169,
+    1065685249,
+    1067178241,
+    1067427073,
+    1068049153,
+    1068173569,
+    1068360193,
+    1068857857,
+    1069728769
+  ],
+  "ciphertext_modulus_bits": 300,
+  "ciphertext_limb_count": 10,
+  "key_moduli": [
+    1070350849,
+    1071221761,
+    1071532801,
+    1071595009
+  ],
+  "k": 4,
+  "dnum": 3,
+  "key_modulus_bits": 120,
+  "device": "cpu",
+  "torch_version": "2.14.1",
+  "platform": "macOS-26.5.1-arm64-arm-64bit-Mach-O",
+  "cpu_threads": 4,
+  "storage_dtype": "torch.int32",
+  "evaluation_key_storage": "Torch file-backed mmap on CPU; one extended-basis limb at a time",
+  "warmups": 1,
+  "runs": 3,
+  "compiled": false,
+  "polynomial_bytes": 53084160,
+  "plaintext": "10000 constant; encryption error std=3.2; dense uniform ciphertext masks",
+  "operations": {
+    "homomorphic_matrix_multiplication_before_switching": {
+      "seconds": [
+        35.54849725001259,
+        25.637646917020902,
+        19.71300774998963
+      ],
+      "average_seconds": 26.96638397234104
+    },
+    "matrix_relinearization_two_switch_big": {
+      "seconds": [
+        12.893949625024106,
+        12.856321041996125,
+        12.738911791995633
+      ],
+      "average_seconds": 12.829727486338621
+    }
+  },
+  "input_setup_seconds": 9.365317708987277,
+  "evaluation_key_setup_seconds": 23.417035083053634,
+  "evaluation_key_bytes": 891884636,
+  "correctness": {
+    "all_limb_consistent_small_CRT_error": true,
+    "max_absolute_switching_error": 24873,
+    "checked_coefficients": 1327104
+  }
+}

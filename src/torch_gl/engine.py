@@ -6,7 +6,7 @@ import torch
 
 from ._transform_tables import resolve_device
 from .ciphertext import Ciphertext, MatrixProductCiphertext, QuadraticCiphertext
-from .matrix import matrix_multiply, matrix_transpose
+from .matrix import _matrix_plan, matrix_transpose
 from .multivariate_poly import MultivariatePoly
 from .rings import GaussianInteger
 from .rns import RNSPoly, RNSRing
@@ -117,6 +117,12 @@ class Engine:
         if polynomial.ring != self.ring or polynomial.device != self.device:
             raise ValueError("polynomial must have the engine's ring and device")
 
+    def _check_secret_key(self, secret_key):
+        if not isinstance(secret_key, RNSPoly):
+            raise TypeError("expected an RNSPoly secret key")
+        if secret_key.ring not in (self.ring, self._small_ring) or secret_key.device != self.device:
+            raise ValueError("secret key must have the engine's ring or small ring and device")
+
     def _sample_noise(self) -> torch.Tensor:
         return (
             torch.empty(self.ring.shape, dtype=torch.float32, device=self.device)
@@ -129,8 +135,7 @@ class Engine:
         self, message: RNSPoly | torch.Tensor | GaussianInteger, secret_key: RNSPoly
     ) -> Ciphertext:
         """Encrypt using an explicit binary key; never retain the supplied key."""
-        secret_key = self._embed_secret_key(secret_key)
-        self._check_polynomial(secret_key)
+        self._check_secret_key(secret_key)
         coefficients = secret_key.centered_coefficients()
         if not bool(((coefficients == 0) | (coefficients == 1)).all()):
             raise ValueError("secret key coefficients must be binary (0 or 1) across all limbs")
@@ -141,6 +146,7 @@ class Engine:
         elif type(message) is int or isinstance(message, tuple):
             message = self.ring.constant(message, device=self.device)
         self._check_polynomial(message)
+        secret_key = self._embed_secret_key(secret_key)
         uniform_component = self.ring.uniform(device=self.device, generator=self._generator)
         noise = self.ring.polynomial(self._sample_noise())
         secret_product = uniform_component.multiply(
@@ -166,13 +172,17 @@ class Engine:
                 raise TypeError("matrix multiplication requires two Ciphertext values")
             self._check_polynomial(ciphertext.b)
             self._check_polynomial(ciphertext.a)
-        right_b_transposed = matrix_transpose(right.b)
-        right_a_transposed = matrix_transpose(right.a)
+        component_limbs = ([], [], [], [])
+        for left_b, left_a, right_b, right_a in zip(
+            left.b.limbs, left.a.limbs, right.b.limbs, right.a.limbs, strict=True
+        ):
+            products = _matrix_plan(left_b.ring, self.device)._multiply_ciphertext_components(
+                left_b, left_a, right_b, right_a
+            )
+            for limbs, product in zip(component_limbs, products, strict=True):
+                limbs.append(product)
         return MatrixProductCiphertext(
-            matrix_multiply(left.b, right_b_transposed),
-            matrix_multiply(left.a, right_b_transposed),
-            matrix_multiply(left.b, right_a_transposed),
-            matrix_multiply(left.a, right_a_transposed),
+            *(RNSPoly(self.ring, tuple(limbs)) for limbs in component_limbs)
         )
 
     def decrypt(
@@ -185,8 +195,8 @@ class Engine:
             raise TypeError(
                 "ciphertext must be a Ciphertext, QuadraticCiphertext, or MatrixProductCiphertext"
             )
+        self._check_secret_key(secret_key)
         secret_key = self._embed_secret_key(secret_key)
-        self._check_polynomial(secret_key)
         if isinstance(ciphertext, MatrixProductCiphertext):
             self._check_matrix_secret(secret_key)
             self._check_matrix_layout()

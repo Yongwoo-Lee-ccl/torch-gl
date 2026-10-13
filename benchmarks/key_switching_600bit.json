@@ -1,103 +1,61 @@
 {
-  "status": "complete",
-  "timestamp_utc": "2026-10-12T11:42:18.530512+00:00",
-  "n": 128,
+  "status": "running",
+  "timestamp_utc": "2026-10-12T15:03:13.581282+00:00",
+  "n": 64,
   "p": 243,
   "ciphertext_moduli": [
-    1050941953,
-    1051937281,
-    1052061697,
-    1052310529,
-    1052683777,
-    1052808193,
-    1054052353,
-    1054176769,
-    1054674433,
-    1055669761,
-    1056665089,
-    1059775489,
-    1060024321,
-    1060646401,
-    1061392897,
-    1063383553,
-    1063507969,
     1064627713,
+    1065063169,
+    1065685249,
+    1067178241,
+    1067427073,
+    1068049153,
+    1068173569,
     1068360193,
-    1068857857
+    1068857857,
+    1069728769
   ],
-  "ciphertext_modulus_bits": 600,
-  "ciphertext_limb_count": 20,
+  "ciphertext_modulus_bits": 300,
+  "ciphertext_limb_count": 10,
   "key_moduli": [
-    1069728769,
     1070350849,
     1071221761,
+    1071532801,
     1071595009
   ],
   "k": 4,
-  "dnum": 5,
+  "dnum": 3,
   "key_modulus_bits": 120,
   "device": "cpu",
-  "torch_version": "2.14.1+cu130",
-  "platform": "Linux-6.8.0-94-generic-x86_64-with-glibc2.35",
-  "cpu_threads": 24,
+  "torch_version": "2.14.1",
+  "platform": "macOS-26.5.1-arm64-arm-64bit-Mach-O",
+  "cpu_threads": 4,
   "storage_dtype": "torch.int32",
   "evaluation_key_storage": "Torch file-backed mmap on CPU; one extended-basis limb at a time",
   "warmups": 1,
-  "runs": 10,
+  "runs": 3,
   "compiled": false,
-  "polynomial_bytes": 424673280,
+  "polynomial_bytes": 53084160,
   "plaintext": "10000 constant; encryption error std=3.2; dense uniform ciphertext masks",
   "operations": {
     "homomorphic_matrix_multiplication_before_switching": {
       "seconds": [
-        376.57446437497856
+        41.07450354198227,
+        35.21409220795613,
+        40.5576619579806
       ],
-      "average_seconds": 376.57446437497856
+      "average_seconds": 38.94875256930633
     },
     "matrix_relinearization_two_switch_big": {
       "seconds": [
-        226.9351862919866
+        29.887598917004652,
+        43.13629662501626,
+        62.94293862499762
       ],
-      "average_seconds": 226.9351862919866
+      "average_seconds": 45.32227805567285
     }
   },
-  "input_setup_seconds": 52.98763799999142,
-  "evaluation_key_setup_seconds": 179.2725746660144,
-  "evaluation_key_bytes": 10192317104,
-  "correctness": {
-    "all_limb_consistent_small_CRT_error": true,
-    "max_absolute_switching_error": 83859,
-    "checked_coefficients": 5308416
-  },
-  "memory_observations": {
-    "source": "vm_stat",
-    "scope": "System-wide counters; includes other applications, not isolated to the benchmark process.",
-    "start": {
-      "page_size_bytes": 16384,
-      "swapins_pages": 1808434,
-      "swapouts_pages": 2994126,
-      "compressor_physical_pages": 214748
-    },
-    "after_key_setup": {
-      "page_size_bytes": 16384,
-      "swapins_pages": 1808842,
-      "swapouts_pages": 2994126,
-      "compressor_physical_pages": 305165
-    },
-    "during_matrix_multiplication": {
-      "page_size_bytes": 16384,
-      "swapins_pages": 1819687,
-      "swapouts_pages": 3068506,
-      "compressor_physical_pages": 399290
-    },
-    "after_completion": {
-      "page_size_bytes": 16384,
-      "swapins_pages": 1823158,
-      "swapouts_pages": 3068506,
-      "compressor_physical_pages": 228377
-    },
-    "swapout_bytes_increase": 1218641920,
-    "swapin_bytes_increase": 241238016
-  },
-  "temporary_key_files_removed": true
+  "input_setup_seconds": 8.625610541959759,
+  "evaluation_key_setup_seconds": 19.927589625003748,
+  "evaluation_key_bytes": 891884636
 }

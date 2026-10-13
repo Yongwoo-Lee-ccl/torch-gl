@@ -4,6 +4,9 @@
 prime q, it performs an NTT, multiplies the resulting matrices modulo q,
 and performs the inverse NTT to recover a polynomial. W frequencies are
 independent batches. Both Gaussian split branches are processed independently.
+The multiplication kernel transforms W only and contracts X/Y coefficient
+matrices. Public `MatrixNTTPlan.forward/inverse` still transform every variable
+to expose canonical matrix slots.
 
 ```python
 import torch
@@ -41,12 +44,25 @@ encoder's root ordering. The implementation splits once before transforms,
 stays in Montgomery form through contraction and inverse transforms, and
 merges once into Gaussian coefficients.
 
-Matrix contraction sums only the shared row/column index. Each product uses
-local int64 Montgomery temporaries and returns int32; every addition is reduced
-modulo q. An unreduced integer `torch.matmul` can overflow int64 for 30-bit
-residues, and floating matmul would lose exactness. This initial implementation
-uses a Python loop over the inner index with vectorized tensor operations over
-all W batches, rows, columns, and branches. GPU performance has not been measured.
+Matrix contraction sums only the shared row/column index. It splits canonical
+30-bit Montgomery residues into low/high 15-bit parts, packs these into a single
+batched float64 GEMM, and reconstructs the result modulo q with int64 arithmetic.
+This avoids the Python inner-index loop and its per-term Montgomery temporaries.
+
+This use of floating GEMM is exact under a checked bound, rather than an
+approximate multiplication of full 30-bit values. Every partial product is an
+integer at most `(2**15-1)**2`; the implementation requires
+`2*n*(2**15-1)**2 <= 2**53`, including the sum of the two cross terms. Thus all
+products and partial sums are representable exactly in float64. FP64 arithmetic
+also avoids FP32/TF32 precision settings. Each integer partial sum is reduced
+modulo q before shifting by 15 or 30 bits, so recombination remains below
+`2**61` and cannot overflow int64. One Montgomery reduction then changes the
+product's `R**2` factor back to `R`. Persisted polynomials remain int32.
+
+Encrypted multiplication reuses four forward W transforms for its four product
+components. Only the RNS-limb loop remains in Python, keeping workspace bounded
+instead of stacking all large limbs together. CUDA execution is supported, but
+GPU correctness and performance have not been measured on the development Mac.
 Plans cache device tables and permutations; `clear_transform_cache()` also
 clears the matrix-plan cache.
 
@@ -64,6 +80,9 @@ Indeed, summing `(rho**(5**k))**(s+t)` over k gives n when s+t=0,
 n*i when s+t=n, and zero otherwise. This is the coefficient contraction
 behind the matrix/trace identity. The finite-field slot multiplication computes
 the full sum, so decoding at `left_scale*right_scale` yields `left @ right`.
+The coefficient implementation prepares the right matrix with row zero unchanged
+and row s replaced by `i*R[n-s,u](W)` for `s>0`, contracts, and multiplies by n.
+It therefore implements this same identity without X/Y NTTs or slot permutations.
 
 The paper's literal `circledast` uses adjoint substitutions and a normalized
 trace, giving `A @ B* / n`. This API computes the ordinary `A @ B` requested

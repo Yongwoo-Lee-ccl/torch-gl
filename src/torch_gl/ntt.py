@@ -25,15 +25,15 @@ def _butterfly_constants(q: int, root: int, length: int) -> tuple[tuple[int, int
     return tuple(stages)
 
 
-def _butterfly(branches, arithmetic, radix, omega):
-    first_branch, second_branch = branches[..., 0, :], branches[..., 1, :]
-    if radix == 2:
+def _butterfly(branches, arithmetic, omega):
+    first_branch, second_branch = branches[:2]
+    if len(branches) == 2:
         output = (
             arithmetic.add(first_branch, second_branch),
             arithmetic.subtract(first_branch, second_branch),
         )
     else:
-        third_branch = branches[..., 2, :]
+        third_branch = branches[2]
         # omega**2 = -1-omega: one multiplication replaces four.
         difference = arithmetic.multiply(arithmetic.subtract(second_branch, third_branch), omega)
         output = (
@@ -41,7 +41,7 @@ def _butterfly(branches, arithmetic, radix, omega):
             arithmetic.add(arithmetic.subtract(first_branch, third_branch), difference),
             arithmetic.subtract(arithmetic.subtract(first_branch, second_branch), difference),
         )
-    return torch.stack(output, dim=-2)
+    return output
 
 
 def _paired_dft(
@@ -69,14 +69,19 @@ def _paired_dft(
         branch_length = stage_lengths[depth] // radix
         branches = values.reshape(
             *values.shape[:-1], length // stage_lengths[depth], radix, branch_length
-        )
+        ).unbind(-2)
         if not inverse:
-            branches = _butterfly(branches, arithmetic, radix, omega)
-        weighted = arithmetic.multiply(branches[..., 1:, :], tables[depth])
-        branches = torch.cat((branches[..., :1, :], weighted), dim=-2)
+            branches = _butterfly(branches, arithmetic, omega)
+        # The innermost stage has only unity twiddles; leave its branches
+        # untouched instead of allocating Montgomery temporaries for *1.
+        if branch_length > 1:
+            branches = (branches[0],) + tuple(
+                arithmetic.multiply(branches[branch], tables[depth][branch - 1])
+                for branch in range(1, radix)
+            )
         if inverse:
-            branches = _butterfly(branches, arithmetic, radix, omega)
-        values = branches.reshape(*values.shape[:-1], length)
+            branches = _butterfly(branches, arithmetic, omega)
+        values = torch.stack(branches, dim=-2).reshape(*values.shape[:-1], length)
     return values
 
 

@@ -112,6 +112,71 @@ def test_modular_matrix_sum_reduces_before_int64_overflow():
 
 
 @pytest.mark.parametrize("device", DEVICES)
+def test_split_gemm_matches_python_integer_dot_products_at_30bit_boundaries(device):
+    q, n = 1073741789, 8
+    arithmetic = arithmetic_context(q)
+    boundary = [0, 1, (1 << 15) - 1, 1 << 15, (1 << 29), q // 2, q - 2, q - 1]
+    left_values = [[boundary[(row + 3 * column) % n] for column in range(n)] for row in range(n)]
+    right_values = [[boundary[(5 * row + column) % n] for column in range(n)] for row in range(n)]
+    left = torch.tensor(left_values, dtype=torch.int32, device=device)
+    right = torch.tensor(right_values, dtype=torch.int32, device=device)
+    left = torch.stack((left, left.flip(0)), -1).unsqueeze(0)
+    right = torch.stack((right, right.flip(1)), -1).unsqueeze(0)
+    product = arithmetic.decode(
+        _matrix_product_residues(arithmetic.encode(left), arithmetic.encode(right), arithmetic)
+    )
+    left_python, right_python = left.cpu().tolist()[0], right.cpu().tolist()[0]
+    expected = [
+        [
+            [
+                sum(
+                    left_python[row][inner][branch] * right_python[inner][column][branch]
+                    for inner in range(n)
+                )
+                % q
+                for branch in range(2)
+            ]
+            for column in range(n)
+        ]
+        for row in range(n)
+    ]
+    assert product.cpu().tolist() == [expected]
+
+
+def test_internal_matrix_multiply_only_transforms_W(monkeypatch):
+    ring = RNSRing.for_parameters(4, 9, limb_count=1).rings[0]
+    plan = MatrixNTTPlan(ring)
+    generator = torch.Generator().manual_seed(1935)
+    left = ring.polynomial(
+        torch.randint(ring.q, ring.shape, dtype=torch.int32, generator=generator)
+    )
+    right = ring.polynomial(
+        torch.randint(ring.q, ring.shape, dtype=torch.int32, generator=generator)
+    )
+    expected = direct_trace_product(left.coefficients, right.coefficients, plan.n, plan.p, ring.q)
+
+    def reject_full_transform(*args, **kwargs):
+        raise AssertionError("coefficient contraction must not perform X/Y transforms")
+
+    monkeypatch.setattr(plan, "_forward_residues", reject_full_transform)
+    monkeypatch.setattr(plan, "_inverse_residues", reject_full_transform)
+    assert torch.equal(plan.multiply(left, right).coefficients, expected)
+
+
+def test_single_row_matrix_contraction_equals_polynomial_product():
+    ring = RNSRing.for_parameters(1, 27, limb_count=1).rings[0]
+    plan = MatrixNTTPlan(ring)
+    generator = torch.Generator().manual_seed(1935)
+    left = ring.polynomial(
+        torch.randint(ring.q, ring.shape, dtype=torch.int32, generator=generator)
+    )
+    right = ring.polynomial(
+        torch.randint(ring.q, ring.shape, dtype=torch.int32, generator=generator)
+    )
+    assert plan.multiply(left, right) == left * right
+
+
+@pytest.mark.parametrize("device", DEVICES)
 @pytest.mark.parametrize(
     "n,p,variables",
     [(4, 9, ("X", "Y", "W")), (4, 27, ("W", "Y", "X")), (2, 729, ("X", "Y", "W"))],

@@ -36,7 +36,8 @@ Other contexts return a key in the supplied ring. Its device defaults to the
 generator's device, and an explicit device must match the generator.
 
 `Engine` never samples or stores a secret key. Encryption and decryption receive
-the key explicitly and embed small-ring keys at Y degree zero temporarily.
+the key explicitly, embed small-ring keys at Y degree zero temporarily, and use
+ordinary polynomial multiplication with the engine's compiler settings.
 Supplied keys must match the context and device; encryption requires binary
 coefficients. Full-ring binary keys remain supported for ordinary encryption.
 Matrix evaluation needs no key; matrix decryption rejects keys depending on Y.

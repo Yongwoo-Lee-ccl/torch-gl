@@ -37,8 +37,14 @@ it does not establish a corresponding GPU ratio.
   and key switching. There is no intermediate bit/digit-reversal pass. Public
   NTT methods still return natural order; public matrix slots use encoder order.
 - Radix-3 butterflies use one constant multiplication plus two branch twiddles.
-  This reduces arithmetic, but eager stages still allocate intermediate tensors;
+  Unity twiddles at the innermost stage are skipped. Each stage builds its output
+  once; it no longer stacks a full butterfly tensor and then concatenates another
+  full copy after multiplying twiddles. Eager stages still allocate temporaries;
   the paired ordering alone does not provide a fused or in-place GPU kernel.
+- Matrix multiplication transforms only W and contracts X/Y coefficient matrices.
+  Exact 15-bit partial products use one batched float64 GEMM, followed by integer
+  modular recombination. See [matrix notes](matrix.md) for the exactness bound.
+  Encrypted products reuse input transforms across all four components.
 - Polynomial products batch both operands and reuse the ring's plan objects.
 - Native products keep Gaussian branches split throughout all axes and pointwise
   multiplication, then merge once. This removes repeated conversions and reduces
@@ -67,6 +73,25 @@ not a claim of measured GPU speedup. See the official
 [Torch compiler performance guide](https://docs.pytorch.org/tutorials/recipes/recipes/tuning_guide).
 
 ## Reproducible measurements
+
+The current matrix and ring-product comparison can be run independently of
+large evaluation-key generation:
+
+```sh
+python scripts/benchmark_matrix.py --n 64 --p 243 --q 1064627713 \
+  --device cpu --threads 4 --warmups 1 --runs 5 \
+  --output benchmarks/matrix_n64_p243.json
+```
+
+The saved CPU result measures 267.2 ms for the former contraction loop versus
+14.44 ms for the exact split GEMM, about 18.5x for contraction alone. The
+comparison verifies exact coefficient equality on shared inputs. Older saved
+small-secret timings describe a specialized path that has since been removed.
+The full n=64, p=243, 300-bit Q, k=4 benchmark averages 3.509 s for encrypted
+matrix multiplication and 11.959 s for two SwitchBig calls; see
+[`benchmarks/key_switching_n64_p243_300bit_fixed.json`](../benchmarks/key_switching_n64_p243_300bit_fixed.json).
+GPU and separate C++ comparisons remain unmeasured. The algebra review is in
+[the audit notes](algebra_audit.md).
 
 Saved eager and compiled CPU results are in
 [`benchmarks/cpu.json`](../benchmarks/cpu.json) and

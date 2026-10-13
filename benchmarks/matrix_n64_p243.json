@@ -1,0 +1,83 @@
+{
+  "n": 64,
+  "p": 243,
+  "q": 1064627713,
+  "limbs": 1,
+  "device": "cpu",
+  "torch_version": "2.14.1",
+  "platform": "macOS-26.5.1-arm64-arm-64bit-Mach-O",
+  "cpu_threads": 4,
+  "storage_dtype": "torch.int32",
+  "gemm_workspace_dtype": "torch.float64",
+  "warmups": 1,
+  "runs": 5,
+  "correctness": "GEMM equals modular loop; batched secret product equals full-ring product",
+  "measurements": {
+    "contraction_modular_loop": {
+      "seconds": [
+        0.2666449999669567,
+        0.26522004103753716,
+        0.26723366702208295,
+        0.2717305420082994,
+        0.27371908398345113
+      ],
+      "median_seconds": 0.26723366702208295,
+      "average_seconds": 0.26890966680366546
+    },
+    "contraction_split_gemm": {
+      "seconds": [
+        0.014391207951121032,
+        0.014358707994688302,
+        0.014444250031374395,
+        0.014532333007082343,
+        0.014476625015959144
+      ],
+      "median_seconds": 0.014444250031374395,
+      "average_seconds": 0.014440624800045043
+    },
+    "polynomial_multiply": {
+      "seconds": [
+        0.20737199997529387,
+        0.20658216701122,
+        0.20810233301017433,
+        0.206820624996908,
+        0.20681745803449303
+      ],
+      "median_seconds": 0.206820624996908,
+      "average_seconds": 0.20713891660561784
+    },
+    "secret_product_full_ring": {
+      "seconds": [
+        0.20667087496258318,
+        0.2071227499982342,
+        0.21186008298536763,
+        0.20626920799259096,
+        0.20692966697970405
+      ],
+      "median_seconds": 0.20692966697970405,
+      "average_seconds": 0.207770516583696
+    },
+    "secret_product_batched_small_ring": {
+      "seconds": [
+        0.1056995420367457,
+        0.10535637504654005,
+        0.10544058302184567,
+        0.10592962498776615,
+        0.10605649999342859
+      ],
+      "median_seconds": 0.1056995420367457,
+      "average_seconds": 0.10569652501726523
+    },
+    "plaintext_matrix_multiply": {
+      "seconds": [
+        0.1221294580027461,
+        0.12268520798534155,
+        0.12333029200090095,
+        0.12243154097814113,
+        0.12244637496769428
+      ],
+      "median_seconds": 0.12244637496769428,
+      "average_seconds": 0.1226045747869648
+    }
+  }
+}
