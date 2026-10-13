@@ -2,6 +2,9 @@
 
 ## 0.1.0
 
+- Add floor-style RNS rescaling and component-wise engine rescaling, dropping the last prime.
+- Add secret-key limb projection and reduced-scale encrypted-product tests/examples.
+
 - Store polynomial/RNS coefficients, keys, ciphertexts, noise, and NTT tables in int32.
 - Keep transforms in Montgomery form and widen only local products to int64.
 

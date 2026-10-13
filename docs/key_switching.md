@@ -2,8 +2,10 @@
 
 `KeySwitcher` implements the Gentry–Lee SwitchSmall and SwitchBig distinction
 using Han–Ki's full-RNS grouped decomposition, ModUp, evaluation-key inner
-product, and ModDown. The implementation operates at a fixed ciphertext basis;
-it does not implement dropping levels or plaintext rescaling.
+product, and ModDown. Each switching key operates at a fixed ciphertext basis.
+Use `RNSPoly.rescale()` or `Engine.rescale()` to divide by the last prime and
+drop a level; see [rescaling](encryption.md#rns-friendly-rescaling). Existing
+switching keys are not automatically reused at the shorter level.
 
 The complete runnable examples are in
 [examples/key_switching.py](../examples/key_switching.py). They cover independent

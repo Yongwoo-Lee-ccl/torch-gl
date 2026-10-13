@@ -108,8 +108,8 @@ The inputs must use the same ring, device, and secret key; key identity is not
 tracked in ciphertexts, so the caller must ensure the shared secret.
 
 Scales multiply: inputs at scale Delta produce a product at scale Delta^2.
-Decode with `MatrixEncoder(ring, scale=Delta**2)`. There is no rescaling or
-relinearization here, and ciphertexts carry no scale metadata. The modulus
+Decode with `MatrixEncoder(ring, scale=Delta**2)`. Multiplication does not
+automatically rescale or relinearize, and ciphertexts carry no scale metadata. The modulus
 product Q must accommodate coefficient growth. The decoded operation is the
 elementwise/Hadamard product of the input matrices. The paper's matrix trace
 product is a separate operation.
@@ -202,3 +202,66 @@ product back to `Ciphertext(b,a)`, use `KeySwitcher.relinearize()` or
 `KeySwitcher.relinearize_matrix()`. See [key switching](key_switching.md) for
 the small/big distinction, grouped RNS decomposition configured by k, and
 switching between independent secrets.
+
+## RNS-friendly rescaling
+
+`polynomial.rescale()` drops the last modulus `q_last` and returns, for each
+remaining prime `q_i`:
+
+```text
+new_coefficient_i = (coefficient_i - coefficient_last) * inverse(q_last, q_i) mod q_i
+```
+
+`coefficient_last` is the canonical residue in `[0,q_last)`, applied separately
+to the real and imaginary channels. For any integer coefficient lift `value`,
+the result is exactly `value // q_last` modulo the shorter chain's product.
+This uses floor-style rounding, including negative coefficients, rather than
+nearest rounding. It handles any supplied modulus order. Tensor subtraction and
+reduction use int32; Montgomery products use local int64 intermediates. The
+last-prime inverses are cached per ring, and no CRT export or coefficient
+transfer to the CPU is required. Rescaling requires at least two input limbs.
+
+`engine.rescale(ciphertext)` applies the same operation to every component of
+`Ciphertext`, `QuadraticCiphertext`, or `MatrixProductCiphertext`. It preserves
+the component order and decryption-key basis. Both APIs return new values;
+the original polynomial, ciphertext, and engine stay at their existing level.
+The message scale becomes `old_scale / q_last`. Component rounding contributes
+additional decryption error, so decoded slots are approximately preserved.
+
+Scales remain caller-managed. Use an engine and decoder for the shorter ring
+and project the same secret with `secret_key.drop_last_limb()`. Projection keeps
+its coefficients unchanged; calling `secret_key.rescale()` would divide them.
+Evaluation keys still belong to their original modulus basis, so switching
+after rescaling needs separately generated keys for that shorter basis.
+
+```python
+import torch
+from torch_gl import Engine, MatrixEncoder, RNSRing, create_secret_key
+
+ring = RNSRing.for_parameters(n=4, p=9, limb_count=4)
+engine = Engine(ring, generator=torch.Generator().manual_seed(101))
+secret_key = create_secret_key(ring, torch.Generator().manual_seed(11))
+encoder = MatrixEncoder(ring)  # Delta = 2**40.
+generator = torch.Generator().manual_seed(301)
+left, right = [
+    torch.randn(encoder.slot_shape, dtype=torch.complex128, generator=generator)
+    for _ in range(2)
+]
+left_ct = engine.encrypt(encoder.encode(left), secret_key)
+right_ct = engine.encrypt(encoder.encode(right), secret_key)
+product = engine.multiply(left_ct, right_ct)  # Scale = Delta**2.
+scaled = engine.rescale(product)
+
+lower_ring = scaled.c0.ring
+lower_engine = Engine(lower_ring)
+lower_key = secret_key.drop_last_limb()
+decoder = MatrixEncoder(lower_ring, scale=encoder.scale**2 / ring.moduli[-1])
+recovered = decoder.decode(lower_engine.decrypt(scaled, lower_key))
+torch.testing.assert_close(recovered, left * right, atol=2e-8, rtol=2e-9)
+```
+
+Run `python examples/rescaling.py` for plaintext and encrypted Hadamard/matrix
+products. `pytest tests/test_rescaling.py` checks independent Python-integer
+quotients above int64, signed boundaries, arbitrary limb order, repeated
+rescaling, input preservation, same-key projection, all three ciphertext forms,
+reduced-scale decoding, and the single-limb rejection.

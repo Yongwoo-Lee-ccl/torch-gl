@@ -114,6 +114,16 @@ class RNSRing:
     def limb_count(self) -> int:
         return len(self.moduli)
 
+    @cached_property
+    def _lower_ring(self) -> "RNSRing":
+        if self.limb_count < 2:
+            raise ValueError("dropping the last modulus requires at least two RNS limbs")
+        return RNSRing(self.moduli[:-1], self.axes)
+
+    @cached_property
+    def _rescale_inverses(self) -> tuple[int, ...]:
+        return tuple(pow(self.moduli[-1], -1, modulus) for modulus in self.moduli[:-1])
+
     def polynomial(self, coefficients: torch.Tensor) -> "RNSPoly":
         """Encode the same integer coefficients in every limb."""
         return RNSPoly(self, tuple(ring.polynomial(coefficients) for ring in self.rings))
@@ -178,6 +188,33 @@ class RNSPoly:
 
     def to(self, device: torch.device | str) -> "RNSPoly":
         return RNSPoly(self.ring, tuple(limb.to(device) for limb in self.limbs))
+
+    def drop_last_limb(self) -> "RNSPoly":
+        """Project into the shorter modulus chain without dividing coefficients.
+
+        Use this for a secret key after ciphertext rescaling. Existing immutable
+        polynomial values are shared; exported coefficient tensors remain copies.
+        """
+        return RNSPoly(self.ring._lower_ring, self.limbs[:-1])
+
+    def rescale(self) -> "RNSPoly":
+        """Divide coefficients by the last prime with floor-style rounding.
+
+        Return (a_i-a_last)*q_last^-1 mod q_i in the shorter chain. The last
+        residue is canonical in [0,q_last), so this agrees with floor division
+        of any integer lift, modulo the remaining product. All coefficient
+        operations stay on the input device; no CRT reconstruction is needed.
+        """
+        lower_ring = self.ring._lower_ring
+        last_coefficients = self.limbs[-1]._coefficients
+        limbs = []
+        for limb, inverse in zip(self.limbs[:-1], self.ring._rescale_inverses, strict=True):
+            # Both residues are <2**30: the signed difference fits int32 even
+            # when q_last is larger than q_i. Reduce before multiplication.
+            difference = (limb._coefficients - last_coefficients).remainder_(limb.ring.q)
+            coefficients = mul_mod(difference, inverse, limb.ring.q)
+            limbs.append(MultivariatePoly._from_owned(limb.ring, coefficients))
+        return RNSPoly(lower_ring, tuple(limbs))
 
     def _coerce(self, other: object) -> "RNSPoly":
         if type(other) is int or isinstance(other, tuple):

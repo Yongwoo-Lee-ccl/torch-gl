@@ -1,4 +1,4 @@
-# Runnable NTT and key-switching examples
+# Runnable NTT, key-switching, and rescaling examples
 
 Run these from the repository root after activating the environment:
 
@@ -6,11 +6,21 @@ Run these from the repository root after activating the environment:
 source .venv/bin/activate
 python examples/ntt.py
 python examples/key_switching.py --case all --k 2
+python examples/rescaling.py
 ```
 
 Every example contains correctness assertions. These scripts use existing
 arithmetic and never run SageMath or regenerate KAT fixtures. The repository's
 [prototype disclaimer](../README.md) applies to the example parameters.
+
+## Rescaling examples
+
+[examples/rescaling.py](../examples/rescaling.py) rescales an encoded plaintext
+product, an encrypted Hadamard product, and an encrypted matrix product. Each
+operation drops the last modulus and checks decoded slots at
+`input_scale**2 / q_last`. It projects the secret with `drop_last_limb()` and
+uses an engine and decoder for the shorter chain. The example runs on CUDA
+when available, otherwise CPU. See [the coefficient formula and API](encryption.md#rns-friendly-rescaling).
 
 ## NTT examples
 

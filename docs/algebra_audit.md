@@ -19,6 +19,7 @@ operation of a complete FHE system. Passing these checks is not a security audit
 | Native NTT | Twists enforce `X^n=i`; Gaussian branches evaluate at `+I/-I`; W evaluates only primitive roots of order `3^a` | Direct finite-field evaluation, inverse tests, Sage product KATs |
 | GS/CT ordering | GS forward gives mixed-radix digit order; CT inverse consumes that same order; pointwise products and switching keys retain it | Independent digit-order evaluation and cyclic-convolution tests; gather-rejection tests |
 | RNS | Independent prime limbs represent one polynomial modulo the product Q; signed export centers modulo Q | CRT reconstruction and cross-limb consistency tests |
+| RNS rescaling | `(a_i-a_last)*q_last^-1 mod q_i`, with canonical last-prime residues; drop that prime and divide the message scale | Python-integer floor quotients above int64, signed boundaries, arbitrary prime order, encrypted Hadamard/matrix decoding |
 | Complex encoding | Section 3.1 inverse canonical embedding, twisted X/Y roots and primitive W roots; nearest Gaussian-integer rounding after scaling | Frozen high-precision Sage encoding KATs, direct evaluation, encoded plaintext products |
 | Encryption | `b=-a*s+e+m`; one integer error tensor shared across RNS limbs; s is sampled in X/W by `create_secret_key` for the standard X/Y/W context | Captured-noise ciphertext equations, independent RNG/key tests |
 | Small-secret embedding | Explicit X/W keys are temporarily embedded at Y degree zero, then ordinary polynomial multiplication is used | Encryption/decryption equations and supplied-small-key compiled tests |
@@ -128,8 +129,9 @@ was written by the user's run and was not overwritten by these measurements.
   the proper small-ring key in the standard context.
 - Key switching uses a fixed active Q basis. Its final short group uses the
   actual product, rather than Han–Ki's padded maximum-level key reuse procedure.
-  Dropping levels and reusing keys across those levels are not implemented.
-- Rescaling, BGV-style integer encryption/modulus switching, rotations,
+  RNS/ciphertext rescaling drops the last Q prime; switching-key reuse across
+  those levels is not implemented.
+- BGV-style integer encryption/modulus switching, rotations,
   encrypted conjugation/transpose switching, public-key encryption, and
   bootstrapping are not implemented. Scale is managed explicitly by callers.
 - CUDA paths are present, but the development machine has no CUDA device.

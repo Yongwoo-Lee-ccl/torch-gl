@@ -185,6 +185,33 @@ class Engine:
             *(RNSPoly(self.ring, tuple(limbs)) for limbs in component_limbs)
         )
 
+    def rescale(
+        self, ciphertext: Ciphertext | QuadraticCiphertext | MatrixProductCiphertext
+    ) -> Ciphertext | QuadraticCiphertext | MatrixProductCiphertext:
+        """Rescale each component and drop the last ciphertext prime.
+
+        The returned value retains its ciphertext type and key basis. Its scale
+        is the old scale divided by q_last; scales are managed by the caller.
+        This engine remains at its original level. Decrypt using an engine for
+        the shorter ring and secret_key.drop_last_limb(), not a rescaled key.
+        """
+        if isinstance(ciphertext, Ciphertext):
+            components = (ciphertext.b, ciphertext.a)
+            ciphertext_type = Ciphertext
+        elif isinstance(ciphertext, QuadraticCiphertext):
+            components = (ciphertext.c0, ciphertext.c1, ciphertext.c2)
+            ciphertext_type = QuadraticCiphertext
+        elif isinstance(ciphertext, MatrixProductCiphertext):
+            components = (ciphertext.c00, ciphertext.c10, ciphertext.c01, ciphertext.c11)
+            ciphertext_type = MatrixProductCiphertext
+        else:
+            raise TypeError(
+                "ciphertext must be a Ciphertext, QuadraticCiphertext, or MatrixProductCiphertext"
+            )
+        for component in components:
+            self._check_polynomial(component)
+        return ciphertext_type(*(component.rescale() for component in components))
+
     def decrypt(
         self,
         ciphertext: Ciphertext | QuadraticCiphertext | MatrixProductCiphertext,

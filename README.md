@@ -184,8 +184,12 @@ Unrelinearized ciphertext multiplication decrypts under `(1,s,s²)` and multipli
 the plaintext scales. See [homomorphic multiplication](docs/encryption.md#homomorphic-multiplication-before-key-switching).
 SwitchSmall and SwitchBig use Han–Ki grouped RNS decomposition configured by k,
 with Hadamard and matrix relinearization; see [key switching](docs/key_switching.md).
-Integer matrix encoding (§4.1), RNS level management, rescaling, and bootstrapping
-are future work.
+`RNSPoly.rescale()` and `engine.rescale(ciphertext)` divide by the last RNS prime
+and drop it; decode at the old scale divided by that prime. See
+[rescaling](docs/encryption.md#rns-friendly-rescaling) and run
+`python examples/rescaling.py` for plaintext, Hadamard, and matrix products.
+Integer matrix encoding (§4.1), evaluation-key reuse across levels, and
+bootstrapping are future work.
 
 ## RNS encryption
 
