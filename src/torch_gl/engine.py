@@ -31,8 +31,10 @@ def create_secret_key(
     device = resolve_device(generator.device if device is None else device)
     if resolve_device(generator.device) != device:
         raise ValueError("random generator and secret key must be on the same device")
-    if {axis.name for axis in ring.axes} == {"X", "Y", "W"}:
-        ring = RNSRing(ring.moduli, tuple(axis for axis in ring.axes if axis.name != "Y"))
+    if {axis.name for axis in ring.axes} in ({"X", "Y", "W"}, {"X", "W", "V"}):
+        ring = RNSRing(
+            ring.moduli, tuple(axis for axis in ring.axes if axis.name not in {"Y", "V"})
+        )
     coefficients = torch.randint(
         2, ring.shape, dtype=torch.int32, device=device, generator=generator
     )
@@ -73,9 +75,12 @@ class Engine:
         self.noise_std, self.compiled, self.backend = float(noise_std), compiled, backend
         self._generator = generator
         names = tuple(axis.name for axis in ring.axes)
-        self._Y_dim = names.index("Y") if set(names) == {"X", "Y", "W"} else None
+        extension = (
+            "Y" if set(names) == {"X", "Y", "W"} else "V" if set(names) == {"X", "W", "V"} else None
+        )
+        self._Y_dim = names.index(extension) if extension else None
         self._small_ring = (
-            RNSRing(ring.moduli, tuple(axis for axis in ring.axes if axis.name != "Y"))
+            RNSRing(ring.moduli, tuple(axis for axis in ring.axes if axis.name != extension))
             if self._Y_dim is not None
             else ring
         )
@@ -163,6 +168,27 @@ class Engine:
             self._check_polynomial(ciphertext.b)
             self._check_polynomial(ciphertext.a)
         return left.multiply(right, compiled=self.compiled, backend=self.backend)
+
+    def create_public_key(self, secret_key: RNSPoly) -> Ciphertext:
+        """An encryption of zero; key generation remains explicit and research-only."""
+        return self.encrypt(0, secret_key)
+
+    def encrypt_public(self, message: RNSPoly, public_key: Ciphertext) -> Ciphertext:
+        """RLWE public-key encryption with binary u and independent e0,e1."""
+        if not isinstance(public_key, Ciphertext):
+            raise TypeError("public_key must be a Ciphertext encrypting zero")
+        for polynomial in (message, public_key.b, public_key.a):
+            self._check_polynomial(polynomial)
+        u = self.ring.polynomial(
+            torch.randint(
+                2, self.ring.shape, dtype=torch.int32, device=self.device, generator=self._generator
+            )
+        )
+        e0, e1 = (
+            self.ring.polynomial(self._sample_noise()),
+            self.ring.polynomial(self._sample_noise()),
+        )
+        return Ciphertext(public_key.b * u + e0 + message, public_key.a * u + e1)
 
     def matrix_multiply(self, left: Ciphertext, right: Ciphertext) -> MatrixProductCiphertext:
         """Encrypt the matrix product m0 @ m1.T without key switching."""

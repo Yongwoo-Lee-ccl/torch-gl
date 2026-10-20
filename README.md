@@ -188,8 +188,16 @@ with Hadamard and matrix relinearization; see [key switching](docs/key_switching
 and drop it; decode at the old scale divided by that prime. See
 [rescaling](docs/encryption.md#rns-friendly-rescaling) and run
 `python examples/rescaling.py` for plaintext, Hadamard, and matrix products.
-Integer matrix encoding (§4.1), evaluation-key reuse across levels, and
-bootstrapping are future work.
+Both approximate and integer (§4) GL arithmetic are available. The leveled
+`Evaluator` tracks ciphertext scales and levels, reuses maximum-level keys at
+every prefix (including partial Han–Ki digits), and supports addition, Hadamard
+products, ordinary/Hermitian transpose, row/column/batch rotations, ciphertext
+matrix products and ciphertext–plaintext matrix products. `matmul` means `A @ B`,
+`matmul_transposed` means `A @ B.T`, and `matmul_adjoint` is the paper's
+`circledast`, `A @ B.mH`. Column rotation requires no switching key.
+See [the scheme API](docs/scheme.md) for approximate/integer examples, public-key
+encryption, level management, and coefficient ring changes. Bootstrapping is
+developed in a separate change.
 
 ## RNS encryption
 

@@ -90,6 +90,18 @@ class RNSRing:
             select_ntt_primes(n, p, limb_count, bits=bits), n, p, variables=variables
         )
 
+    @classmethod
+    def auxiliary(cls, moduli: tuple[int, ...], n: int, p: int) -> "RNSRing":
+        """R^aux = Z_Q[i][X,W,V]/(X^n-i,Phi_p(W),Phi_p(V))."""
+        return cls(
+            tuple(moduli),
+            (
+                QuotientAxis.power_of_i("X", n),
+                QuotientAxis.cyclotomic("W", p),
+                QuotientAxis.cyclotomic("V", p),
+            ),
+        )
+
     @cached_property
     def rings(self) -> tuple[PolynomialRing, ...]:
         return tuple(PolynomialRing(modulus, self.axes) for modulus in self.moduli)
@@ -196,6 +208,44 @@ class RNSPoly:
         polynomial values are shared; exported coefficient tensors remain copies.
         """
         return RNSPoly(self.ring._lower_ring, self.limbs[:-1])
+
+    def at_level(self, limb_count: int) -> "RNSPoly":
+        """Project to a nonempty prefix of Q without rescaling the message."""
+        if type(limb_count) is not int or not 1 <= limb_count <= self.ring.limb_count:
+            raise ValueError("limb_count must select a nonempty prefix of the modulus chain")
+        if limb_count == self.ring.limb_count:
+            return self
+        return RNSPoly(
+            RNSRing(self.ring.moduli[:limb_count], self.ring.axes), self.limbs[:limb_count]
+        )
+
+    def mod_raise(self, target: RNSRing) -> "RNSPoly":
+        """Lift centered coefficient representatives into a larger modulus.
+
+        This changes a ciphertext's decryption from m to m+Q*I. It is the
+        ModRaise step of bootstrapping, not a refresh by itself. Exact Python
+        CRT is used at this infrequent boundary, even for Q exceeding int64.
+        """
+        if not isinstance(target, RNSRing):
+            raise TypeError("target must be an RNSRing")
+        if (
+            target.axes != self.ring.axes
+            or target.moduli[: self.ring.limb_count] != self.ring.moduli
+        ):
+            raise ValueError("target must extend the current modulus chain with the same axes")
+        if target == self.ring:
+            return self
+        integers = self.reconstruct(centered=True)
+        new_limbs = tuple(
+            MultivariatePoly._from_owned(
+                ring,
+                torch.tensor(
+                    [value % ring.q for value in integers], dtype=torch.int32, device=self.device
+                ).reshape(ring.shape),
+            )
+            for ring in target.rings[self.ring.limb_count :]
+        )
+        return RNSPoly(target, self.limbs + new_limbs)
 
     def rescale(self) -> "RNSPoly":
         """Divide coefficients by the last prime with floor-style rounding.
