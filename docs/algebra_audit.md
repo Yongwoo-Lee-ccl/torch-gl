@@ -136,7 +136,8 @@ was written by the user's run and was not overwritten by these measurements.
 - Automorphisms, transpose, conjugation, rotations, public-key encryption,
   and a scale/level-aware approximate evaluator are implemented. Ring changes
   extract Y/V coefficients and merge them using the secret-independent axes.
-  Bootstrapping remains a separate implementation step.
+  Approximate bootstrapping follows the Section 4 construction of 2026/956;
+  see [bootstrapping.md](bootstrapping.md) for numerical bounds and validation.
 - CUDA paths are present, but the development machine has no CUDA device.
   GPU correctness, throughput, and comparison to C++ remain unmeasured.
 
