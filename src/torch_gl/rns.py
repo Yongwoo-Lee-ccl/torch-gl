@@ -247,20 +247,29 @@ class RNSPoly:
         )
         return RNSPoly(target, self.limbs + new_limbs)
 
-    def rescale(self) -> "RNSPoly":
-        """Divide coefficients by the last prime with floor-style rounding.
+    def rescale(self, *, rounding: str = "floor") -> "RNSPoly":
+        """Divide coefficients by the last prime, then drop it.
 
         Return (a_i-a_last)*q_last^-1 mod q_i in the shorter chain. The last
         residue is canonical in [0,q_last), so this agrees with floor division
         of any integer lift, modulo the remaining product. All coefficient
         operations stay on the input device; no CRT reconstruction is needed.
+        rounding="nearest" subtracts the centered last residue instead, giving
+        nearest-integer division and a rounding error of at most one half.
         """
+        if rounding not in {"floor", "nearest"}:
+            raise ValueError("rounding must be 'floor' or 'nearest'")
         lower_ring = self.ring._lower_ring
         last_coefficients = self.limbs[-1]._coefficients
+        if rounding == "nearest":
+            prime = self.ring.moduli[-1]
+            last_coefficients = torch.where(
+                last_coefficients > prime // 2, last_coefficients - prime, last_coefficients
+            )
         limbs = []
         for limb, inverse in zip(self.limbs[:-1], self.ring._rescale_inverses, strict=True):
-            # Both residues are <2**30: the signed difference fits int32 even
-            # when q_last is larger than q_i. Reduce before multiplication.
+            # A normal limb minus a centered 30-bit residue is <3*2**29,
+            # so the difference still fits int32 in either rounding mode.
             difference = (limb._coefficients - last_coefficients).remainder_(limb.ring.q)
             coefficients = mul_mod(difference, inverse, limb.ring.q)
             limbs.append(MultivariatePoly._from_owned(limb.ring, coefficients))

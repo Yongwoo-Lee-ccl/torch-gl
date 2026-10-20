@@ -196,8 +196,12 @@ matrix products and ciphertext–plaintext matrix products. `matmul` means `A @ 
 `matmul_transposed` means `A @ B.T`, and `matmul_adjoint` is the paper's
 `circledast`, `A @ B.mH`. Column rotation requires no switching key.
 See [the scheme API](docs/scheme.md) for approximate/integer examples, public-key
-encryption, level management, and coefficient ring changes. Bootstrapping is
-developed in a separate change.
+encryption, level management, and coefficient ring changes.
+Approximate [GL bootstrapping](docs/bootstrapping.md) implements the paper's
+Section 4 reference construction through explicit R'/R/Raux ring changes.
+Run `python examples/bootstrapping.py` to refresh a noisy ciphertext and
+continue encrypted computation. The documented numerical domain and reference
+implementation limits apply; this is not the paper's optimized benchmark.
 
 ## RNS encryption
 

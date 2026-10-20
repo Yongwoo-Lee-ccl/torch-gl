@@ -2,6 +2,7 @@
 
 from ._transform_tables import clear_transform_cache
 from .automorphisms import automorphism, conjugate, embed, hermitian_transpose, swap_axes
+from .bootstrapping import BootstrapKeys, BootstrapParameters, Bootstrapper, generate_bootstrap_keys
 from .ciphertext import Ciphertext, MatrixProductCiphertext, QuadraticCiphertext
 from .cyclotomic import CyclotomicNTTPlan
 from .encoding import MatrixEncoder
@@ -27,6 +28,10 @@ from .trace import AuxiliaryMatrixPlan, auxiliary_matrix_multiply
 from .twisted import GaussianNTTPlan
 
 __all__ = [
+    "BootstrapKeys",
+    "BootstrapParameters",
+    "Bootstrapper",
+    "generate_bootstrap_keys",
     "AuxiliaryMatrixPlan",
     "auxiliary_matrix_multiply",
     "EvaluationKeys",

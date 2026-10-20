@@ -103,13 +103,16 @@ class Evaluator:
     Here matmul returns A @ B, and matmul_adjoint implements the paper's A @ B^H.
     """
 
-    def __init__(self, ring: RNSRing, keys: EvaluationKeys, *, device="cpu"):
+    def __init__(self, ring: RNSRing, keys: EvaluationKeys, *, device="cpu", rounding="floor"):
         if not isinstance(ring, RNSRing) or not isinstance(keys, EvaluationKeys):
             raise TypeError("expected an RNSRing and EvaluationKeys")
         if keys.hadamard.parameters.ring != ring:
             raise ValueError("evaluation keys must be generated at the evaluator's maximum level")
         if keys.hadamard.parameters.plaintext_modulus is not None:
             raise ValueError("Evaluator is approximate; integer ciphertexts use IntegerEngine")
+        if rounding not in {"floor", "nearest"}:
+            raise ValueError("rounding must be 'floor' or 'nearest'")
+        self.rounding = rounding
         self.ring, self.keys, self.device = ring, keys, resolve_device(device)
         if keys.hadamard.device != self.device:
             raise ValueError("evaluation keys and evaluator must have the same device")
@@ -181,7 +184,10 @@ class Evaluator:
         if value.level < 2:
             raise ValueError("rescaling requires at least two primes")
         return ScaledCiphertext(
-            Ciphertext(value.ciphertext.b.rescale(), value.ciphertext.a.rescale()),
+            Ciphertext(
+                value.ciphertext.b.rescale(rounding=self.rounding),
+                value.ciphertext.a.rescale(rounding=self.rounding),
+            ),
             value.scale / value.ring.moduli[-1],
         )
 

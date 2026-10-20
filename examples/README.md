@@ -27,3 +27,10 @@ The example demonstrates encrypted inference, not encrypted training.
 Both scripts keep key generation and final decryption separate from the
 server's `Evaluator`, which has public evaluation material and no secret field.
 No external datasets, model downloads or additional packages are needed.
+
+`bootstrapping.py` is a separate full refresh demonstration. It splits the Y
+coefficients into R, packs into R'/Raux for the two transforms, reduces carries
+homomorphically, restores four modulus limbs, and performs an encrypted square.
+Use `--batch 2` to refresh multiple independent ciphertexts through the same
+public material. See [bootstrapping](../docs/bootstrapping.md) for its domain
+and precision limits.
