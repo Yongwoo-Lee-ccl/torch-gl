@@ -260,6 +260,20 @@ through CPU Python integers, including when the polynomial device is CUDA.
 Floating accuracy remains limited by complex128; larger integer storage does
 not add precision. See [encoding details](docs/encoding.md).
 
+## Machine learning examples
+
+```sh
+python examples/linear_regression.py
+python examples/mlp.py
+```
+
+The regressor fits public toy training data and performs one encrypted linear
+layer on private feature rows. The MLP evaluates two public linear layers with
+a square activation on encrypted inputs. Both pack eight samples into two
+4-by-4 matrices, need no downloads or extra dependencies, compare against
+the same plaintext computation, and report error and remaining levels.
+Add `--device cuda` on a CUDA machine. See [examples](docs/examples.md).
+
 ## Tests
 
 ```sh
