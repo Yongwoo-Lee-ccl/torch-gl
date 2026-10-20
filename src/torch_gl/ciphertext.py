@@ -18,6 +18,33 @@ class Ciphertext:
         if self.b.ring != self.a.ring or self.b.device != self.a.device:
             raise ValueError("ciphertext components must have the same ring and device")
 
+    @property
+    def ring(self):
+        return self.b.ring
+
+    @property
+    def device(self):
+        return self.b.device
+
+    def at_level(self, limb_count: int) -> "Ciphertext":
+        return Ciphertext(self.b.at_level(limb_count), self.a.at_level(limb_count))
+
+    def __add__(self, other):
+        if isinstance(other, Ciphertext):
+            return Ciphertext(self.b + other.b, self.a + other.a)
+        return Ciphertext(self.b + other, self.a)
+
+    __radd__ = __add__
+
+    def __neg__(self):
+        return Ciphertext(-self.b, -self.a)
+
+    def __sub__(self, other):
+        return self + (-other)
+
+    def __rsub__(self, other):
+        return -self + other
+
     def multiply(
         self, other: "Ciphertext", *, compiled: bool = False, backend: str = "inductor"
     ) -> "QuadraticCiphertext":

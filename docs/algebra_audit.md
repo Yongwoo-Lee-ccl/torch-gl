@@ -127,13 +127,16 @@ was written by the user's run and was not overwritten by these measurements.
   experimentation. Such Y-dependent keys are outside the paper's small-secret
   scheme and are rejected for matrix decryption. `create_secret_key` generates
   the proper small-ring key in the standard context.
-- Key switching uses a fixed active Q basis. Its final short group uses the
-  actual product, rather than Han–Ki's padded maximum-level key reuse procedure.
-  RNS/ciphertext rescaling drops the last Q prime; switching-key reuse across
-  those levels is not implemented.
-- BGV-style integer encryption/modulus switching, rotations,
-  encrypted conjugation/transpose switching, public-key encryption, and
-  bootstrapping are not implemented. Scale is managed explicitly by callers.
+- Maximum-level switching keys are reused at all prefix levels, including a
+  partial final digit. The decomposition retains the maximum-level cofactor;
+  it must not silently replace it with the active-level cofactor.
+- The integer variant uses a splitting plaintext prime t and q_i = 1 mod t.
+  Both encryption/evaluation-key error and ModSwitch rounding are multiples
+  of t. IntegerEncoder exposes both independent Gaussian NTT branches.
+- Automorphisms, transpose, conjugation, rotations, public-key encryption,
+  and a scale/level-aware approximate evaluator are implemented. Ring changes
+  extract Y/V coefficients and merge them using the secret-independent axes.
+  Bootstrapping remains a separate implementation step.
 - CUDA paths are present, but the development machine has no CUDA device.
   GPU correctness, throughput, and comparison to C++ remain unmeasured.
 

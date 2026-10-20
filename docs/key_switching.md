@@ -49,8 +49,10 @@ ciphertext primes in each decomposition digit. With `L+1=ring.limb_count`,
 `dnum=ceil((L+1)/k)`. The active primes are partitioned into consecutive groups;
 the final group may contain fewer primes. Its actual product is used directly,
 so no unused level primes need to be introduced. For a divisible full basis,
-this is Han–Ki's `alpha=k`, `dnum=(L+1)/k` construction. Reusing keys at lower
-levels through the paper's padding procedure is outside this fixed-level API.
+this is Han–Ki's `alpha=k`, `dnum=(L+1)/k` construction. Maximum-level keys are
+also reusable at any shorter prefix. Construct the lower switcher with the
+original k and key primes; decomposition uses the original key's cofactor,
+including when the active final digit is incomplete. See [scheme.md](scheme.md).
 
 The auxiliary product `P=product(key_moduli)` must be at least the largest
 digit product. Automatic selection finds compatible primes above the largest

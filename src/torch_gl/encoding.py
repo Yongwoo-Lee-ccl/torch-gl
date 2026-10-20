@@ -27,8 +27,8 @@ class MatrixEncoder:
             raise ValueError("scale must be finite and positive")
         if not math.isfinite(scale) or scale <= 0:
             raise ValueError("scale must be finite and positive")
-        if not ring.axes or len({axis.name for axis in ring.axes} - {"X", "Y", "W"}):
-            raise ValueError("encoding requires X/Y power-of-i axes and a W cyclotomic axis")
+        if not ring.axes or len({axis.name for axis in ring.axes} - {"X", "Y", "W", "V"}):
+            raise ValueError("encoding requires GL power-of-i and cyclotomic axes")
         self.ring, self.scale, self.device = ring, float(scale), resolve_device(device)
         self._W_dim = next((dim for dim, axis in enumerate(ring.axes) if axis.name == "W"), None)
         if self._W_dim is None:
@@ -37,14 +37,18 @@ class MatrixEncoder:
         self.p = W_axis.cyclotomic_order
         if self.p is None or odd_prime_power(self.p)[0] != 3:
             raise ValueError("encoding currently supports only power-of-three cyclotomics")
-        self._stride = self.p // 3
-        self._W_indices = torch.tensor(
-            [pow(2, slot, self.p) for slot in range(W_axis.degree)], device=self.device
-        )
+        self._cyclotomics = {}
         self._twists = {}
         self._permutations = {}
         for dim, axis in enumerate(ring.axes):
-            if dim == self._W_dim:
+            if axis.cyclotomic_order:
+                p = axis.cyclotomic_order
+                if odd_prime_power(p)[0] != 3:
+                    raise ValueError("encoding currently supports only power-of-three cyclotomics")
+                indices = torch.tensor(
+                    [pow(2, slot, p) for slot in range(axis.degree)], device=self.device
+                )
+                self._cyclotomics[dim] = (p, p // 3, indices)
                 continue
             if axis != QuotientAxis.power_of_i(axis.name, axis.degree):
                 raise ValueError("X/Y axes must satisfy X**n=i or Y**n=i")
@@ -67,23 +71,23 @@ class MatrixEncoder:
         for dim, twist in self._twists.items():
             values = torch.fft.ifft(values * twist, dim=dim) * self.ring.axes[dim].degree
             values = values.index_select(dim, self._permutations[dim][0])
-        values = torch.fft.ifft(values, n=self.p, dim=self._W_dim) * self.p
-        return values.index_select(self._W_dim, self._W_indices).permute(self._slot_dims)
+        for dim, (p, _, indices) in self._cyclotomics.items():
+            values = torch.fft.ifft(values, n=p, dim=dim) * p
+            values = values.index_select(dim, indices)
+        return values.permute(self._slot_dims)
 
     def _interpolate(self, slots: torch.Tensor) -> torch.Tensor:
         values = slots.permute(self._coefficient_dims)
-        padded_shape = list(self.ring.shape[:-1])
-        padded_shape[self._W_dim] = self.p
-        padded = torch.zeros(padded_shape, dtype=torch.complex128, device=self.device)
-        padded.index_copy_(self._W_dim, self._W_indices, values)
-        projected = torch.fft.fft(padded, dim=self._W_dim) / self.p
-        # The length-p interpolation agrees at every primitive root. Its
-        # degree-<p representative must still be reduced to degree <phi(p):
-        # W**(2*stride+r) = -W**r-W**(stride+r), for 0 <= r < stride.
-        tail = projected.narrow(self._W_dim, 2 * self._stride, self._stride)
-        values = projected.narrow(self._W_dim, 0, 2 * self._stride) - torch.cat(
-            (tail, tail), dim=self._W_dim
-        )
+        for dim, (p, stride, indices) in reversed(tuple(self._cyclotomics.items())):
+            padded_shape = list(values.shape)
+            padded_shape[dim] = p
+            padded = torch.zeros(padded_shape, dtype=torch.complex128, device=self.device)
+            padded.index_copy_(dim, indices, values)
+            projected = torch.fft.fft(padded, dim=dim) / p
+            # Reduce the length-p interpolant modulo Phi_p. Its tail is not
+            # zero, even though values at nonprimitive roots were padded by 0.
+            tail = projected.narrow(dim, 2 * stride, stride)
+            values = projected.narrow(dim, 0, 2 * stride) - torch.cat((tail, tail), dim=dim)
         for dim, twist in reversed(tuple(self._twists.items())):
             values = values.index_select(dim, self._permutations[dim][1])
             values = torch.fft.fft(values, dim=dim) / self.ring.axes[dim].degree

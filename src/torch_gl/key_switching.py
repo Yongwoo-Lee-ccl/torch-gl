@@ -18,11 +18,11 @@ from .multivariate_poly import MultivariatePoly
 from .rns import RNSPoly, RNSRing
 
 
-def _special_primes(ring, count):
+def _special_primes(ring, count, plaintext_modulus=None):
     orders = [
         axis.cyclotomic_order if axis.cyclotomic_order else 4 * axis.degree for axis in ring.axes
     ]
-    step = math.lcm(*orders)
+    step = math.lcm(*orders, plaintext_modulus or 1)
     candidate = (max(ring.moduli) // step + 1) * step + 1
     result = []
     while len(result) < count and candidate <= MAX_MODULUS:
@@ -38,13 +38,14 @@ def _special_primes(ring, count):
 class KeySwitchParameters:
     """k key primes and k ciphertext primes per digit; dnum=ceil(limb_count/k).
 
-    The final digit may have fewer than k primes. This fixed-level implementation
-    forms its exact smaller product directly, instead of padding unused levels.
+    The final digit may have fewer than k primes. Keys generated here can also
+    be used at every prefix of this modulus chain, including a partial digit.
     """
 
     ring: RNSRing
     k: int = 4
     key_moduli: tuple[int, ...] | None = None
+    plaintext_modulus: int | None = None
 
     def __post_init__(self):
         if not isinstance(self.ring, RNSRing):
@@ -53,8 +54,13 @@ class KeySwitchParameters:
             raise ValueError("k must be a positive integer")
         if not {"X", "W"}.issubset(axis.name for axis in self.ring.axes):
             raise ValueError("key switching requires a Gentry–Lee X/W or X/Y/W ring")
+        t = self.plaintext_modulus
+        if t is not None and (
+            type(t) is not int or t < 2 or any(q % t != 1 for q in self.ring.moduli)
+        ):
+            raise ValueError("integer key switching needs t >= 2 and ciphertext primes 1 modulo t")
         moduli = (
-            _special_primes(self.ring, self.k)
+            _special_primes(self.ring, self.k, t)
             if self.key_moduli is None
             else tuple(self.key_moduli)
         )
@@ -62,6 +68,8 @@ class KeySwitchParameters:
             raise ValueError("key_moduli must contain exactly k distinct primes")
         if set(moduli) & set(self.ring.moduli):
             raise ValueError("key primes and ciphertext primes must be disjoint")
+        if t is not None and any(q % t != 1 for q in moduli):
+            raise ValueError("integer key primes must be 1 modulo the plaintext modulus")
         object.__setattr__(self, "key_moduli", moduli)
         _ = self.extended_ring  # Validate all prime sizes and NTT requirements.
         if self.key_modulus < max(self.digit_moduli):
@@ -69,7 +77,9 @@ class KeySwitchParameters:
 
     @cached_property
     def small_ring(self):
-        return RNSRing(self.ring.moduli, tuple(axis for axis in self.ring.axes if axis.name != "Y"))
+        return RNSRing(
+            self.ring.moduli, tuple(axis for axis in self.ring.axes if axis.name not in {"Y", "V"})
+        )
 
     @cached_property
     def extended_ring(self):
@@ -157,7 +167,7 @@ class MatrixKeySwitchKeys:
 
 
 class KeySwitcher:
-    """Fixed-level RNS key switching. Sampling remains research-only Torch RNG."""
+    """RNS key switching with evaluation-key reuse at shorter prefix levels."""
 
     def __init__(
         self,
@@ -168,8 +178,9 @@ class KeySwitcher:
         noise_std: float = 3.2,
         device="cpu",
         generator=None,
+        plaintext_modulus=None,
     ):
-        self.parameters = KeySwitchParameters(ring, k, key_moduli)
+        self.parameters = KeySwitchParameters(ring, k, key_moduli, plaintext_modulus)
         if isinstance(noise_std, bool) or not isinstance(noise_std, (int, float)):
             raise ValueError("noise_std must be finite and nonnegative")
         if not math.isfinite(noise_std) or noise_std < 0:
@@ -179,7 +190,8 @@ class KeySwitcher:
             raise ValueError("generator and key switcher must have the same device")
         self.noise_std, self.generator = float(noise_std), generator
         names = tuple(axis.name for axis in ring.axes)
-        self._Y_dim = names.index("Y") if "Y" in names else None
+        extension = "Y" if "Y" in names else "V" if "V" in names else None
+        self._Y_dim = names.index(extension) if extension else None
         self._converters, self._digit_inverses = [], []
         for group, modulus in zip(
             self.parameters.groups, self.parameters.digit_moduli, strict=True
@@ -286,7 +298,8 @@ class KeySwitcher:
             torch.empty(key_ring.shape, dtype=torch.float32, device=self.device)
             .normal_(0, self.noise_std, generator=self.generator)
             .round_()
-            .to(torch.int32)
+            .to(torch.int64 if self.parameters.plaintext_modulus else torch.int32)
+            * (self.parameters.plaintext_modulus or 1)
             for _ in self.parameters.groups
         )
         directory = Path(storage_directory) if storage_directory is not None else None
@@ -321,7 +334,7 @@ class KeySwitcher:
                         generator=self.generator,
                     )
                 )
-                noise_slots = transform.forward(noise.remainder(prime))
+                noise_slots = transform.forward(noise.remainder(prime).to(torch.int32))
                 masked_slots = arithmetic.subtract(
                     noise_slots, arithmetic.multiply(uniform_slots, destination_slots)
                 )
@@ -364,18 +377,44 @@ class KeySwitcher:
     def _check_key(self, key, kind):
         if not isinstance(key, KeySwitchKey):
             raise TypeError("expected a KeySwitchKey")
-        if key.parameters != self.parameters or key.device != self.device or key.kind != kind:
+        top = key.parameters
+        if (
+            top.ring.axes != self.parameters.ring.axes
+            or top.ring.moduli[: self.parameters.ring.limb_count] != self.parameters.ring.moduli
+            or top.k != self.k
+            or top.key_moduli != self.parameters.key_moduli
+            or top.plaintext_modulus != self.parameters.plaintext_modulus
+            or key.device != self.device
+            or key.kind != kind
+        ):
             raise ValueError("switching key has the wrong parameters, device, or kind")
 
     def _apply(self, component, key, kind):
         self._check(component, self.parameters.ring)
         self._check_key(key, kind)
+        # A maximum-level key encrypts P*(Q_top/B_top_j)*s_source. Retain
+        # that cofactor in the decomposition inverse at a lower level. Merely
+        # truncating a key and using Q_level/B_level_j silently changes the
+        # plaintext, particularly when the last active digit is incomplete.
+        digit_inverses = self._digit_inverses
+        if key.parameters != self.parameters:
+            digit_inverses = []
+            for digit, (group, modulus) in enumerate(
+                zip(self.parameters.groups, self.parameters.digit_moduli, strict=True)
+            ):
+                cofactor = key.parameters.ring.modulus // key.parameters.digit_moduli[digit]
+                digit_inverses.append(
+                    tuple(
+                        pow(cofactor, -1, prime) * pow(modulus // prime, -1, prime) % prime
+                        for prime in (self.parameters.ring.moduli[index] for index in group)
+                    )
+                )
         prepared_digits = tuple(
             converter.prepare(
                 tuple(component.limbs[index]._coefficients for index in group), inverses=inverses
             )
             for group, inverses, converter in zip(
-                self.parameters.groups, self._digit_inverses, self._converters, strict=True
+                self.parameters.groups, digit_inverses, self._converters, strict=True
             )
         )
         temporary_b, temporary_a, result_b, result_a = [], [], [], []
@@ -383,7 +422,7 @@ class KeySwitcher:
         for index, prime in enumerate(self.parameters.extended_ring.moduli):
             transform = self._transform(kind, index, batch=kind == "small")
             arithmetic = transform.arithmetic
-            digit_keys = key._load(index)
+            digit_keys = key._load(index)[: self.dnum]
             accumulator_b = accumulator_a = None
             for prepared, converter, (key_b, key_a) in zip(
                 prepared_digits, self._converters, digit_keys, strict=True
@@ -413,6 +452,18 @@ class KeySwitcher:
                 temporary_b.append(coefficients_b)
                 temporary_a.append(coefficients_a)
                 if index == self.k - 1:
+                    if self.parameters.plaintext_modulus is not None:
+                        # Integer ModDown subtracts t times a lift of c/t in P,
+                        # so all rounding error remains a multiple of t.
+                        t = self.parameters.plaintext_modulus
+                        temporary_b = [
+                            mul_mod(v, pow(t, -1, p), p)
+                            for v, p in zip(temporary_b, self.parameters.key_moduli, strict=True)
+                        ]
+                        temporary_a = [
+                            mul_mod(v, pow(t, -1, p), p)
+                            for v, p in zip(temporary_a, self.parameters.key_moduli, strict=True)
+                        ]
                     prepared_b = self._down_converter.prepare(temporary_b)
                     prepared_a = self._down_converter.prepare(temporary_a)
                     temporary_b.clear()
@@ -421,6 +472,9 @@ class KeySwitcher:
                 # Han–Ki ModDown: (Q-part - Conv_P->Q(P-part)) / P modulo q.
                 converted_b = self._down_converter.convert_prepared(prepared_b, prime)
                 converted_a = self._down_converter.convert_prepared(prepared_a, prime)
+                if self.parameters.plaintext_modulus is not None:
+                    converted_b = mul_mod(converted_b, self.parameters.plaintext_modulus, prime)
+                    converted_a = mul_mod(converted_a, self.parameters.plaintext_modulus, prime)
                 inverse_P = pow(self.parameters.key_modulus, -1, prime)
                 values_b = mul_mod(sub_mod(coefficients_b, converted_b, prime), inverse_P, prime)
                 values_a = mul_mod(sub_mod(coefficients_a, converted_a, prime), inverse_P, prime)
