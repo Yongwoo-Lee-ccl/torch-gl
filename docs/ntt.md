@@ -94,9 +94,9 @@ The requested axis is moved to the last position by `values.movedim(dim,-1)`.
 Every other dimension becomes a batch dimension. At each stage, the code uses:
 
 ```python
-branches = values.reshape(
-    *values.shape[:-1], length // stage_length, radix, branch_length
-).unbind(-2)
+branches = values.reshape(*values.shape[:-1], length // stage_length, radix, branch_length).unbind(
+    -2
+)
 ```
 
 The new dimensions mean `(independent groups, branches, positions in a branch)`.
@@ -168,15 +168,9 @@ radix-3 operations also process whole branch tensors:
 
 ```python
 first_branch, second_branch, third_branch = branches
-weighted_difference = arithmetic.multiply(
-    arithmetic.subtract(second_branch, third_branch), omega
-)
-output_0 = arithmetic.add(
-    arithmetic.add(first_branch, second_branch), third_branch
-)
-output_1 = arithmetic.add(
-    arithmetic.subtract(first_branch, third_branch), weighted_difference
-)
+weighted_difference = arithmetic.multiply(arithmetic.subtract(second_branch, third_branch), omega)
+output_0 = arithmetic.add(arithmetic.add(first_branch, second_branch), third_branch)
+output_1 = arithmetic.add(arithmetic.subtract(first_branch, third_branch), weighted_difference)
 output_2 = arithmetic.subtract(
     arithmetic.subtract(first_branch, second_branch), weighted_difference
 )

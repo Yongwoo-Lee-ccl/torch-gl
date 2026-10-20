@@ -244,8 +244,7 @@ secret_key = create_secret_key(ring, torch.Generator().manual_seed(11))
 encoder = MatrixEncoder(ring)  # Delta = 2**40.
 generator = torch.Generator().manual_seed(301)
 left, right = [
-    torch.randn(encoder.slot_shape, dtype=torch.complex128, generator=generator)
-    for _ in range(2)
+    torch.randn(encoder.slot_shape, dtype=torch.complex128, generator=generator) for _ in range(2)
 ]
 left_ct = engine.encrypt(encoder.encode(left), secret_key)
 right_ct = engine.encrypt(encoder.encode(right), secret_key)
