@@ -88,6 +88,8 @@ def prepare_cpu_kernels(moduli):
                 (_scalar(1, torch.int32, 1), _scalar(2, torch.int32, 2)),
                 *_constants(q, inverse),
             )
+        for right in (_scalar(1, torch.int32, 100), values.clone()):
+            _product_kernel()(values, right, *_constants(q, inverse))
     return cpu_optimization_info()
 
 
@@ -100,6 +102,7 @@ def cpu_optimization_info():
         "linear_cache": _linear_kernel.cache_info()._asdict(),
         "scalar_cache": _scalar.cache_info()._asdict(),
         "gaussian_cache": _gaussian_kernel.cache_info()._asdict(),
+        "product_cache": _product_kernel.cache_info()._asdict(),
         "compiler_stats": dict(counters["stats"]),
     }
 
@@ -137,3 +140,29 @@ def maybe_gaussian(values, weights, q, negative_inverse, *, inverse):
     return _gaussian_kernel(inverse)(flat, weights, *_constants(q, negative_inverse)).reshape(
         values.shape
     )
+
+
+@lru_cache(maxsize=1)
+def _product_kernel():
+    return torch.compile(_product, backend="inductor", fullgraph=True, dynamic=True)
+
+
+def maybe_product(left, right, q, negative_inverse):
+    if not _enabled(left):
+        return None
+    if isinstance(right, int):
+        right = _scalar(right, torch.int32, 100)
+    if (
+        not isinstance(right, torch.Tensor)
+        or right.dtype != torch.int32
+        or right.device.type != "cpu"
+    ):
+        return None
+    shape = torch.broadcast_shapes(left.shape, right.shape)
+    if right.ndim == 0:
+        flat_left, flat_right = left.contiguous().view(-1), right
+    else:
+        expanded_left, expanded_right = torch.broadcast_tensors(left, right)
+        flat_left = expanded_left.contiguous().view(-1)
+        flat_right = expanded_right.contiguous().view(-1)
+    return _product_kernel()(flat_left, flat_right, *_constants(q, negative_inverse)).reshape(shape)

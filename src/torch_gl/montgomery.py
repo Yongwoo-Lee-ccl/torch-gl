@@ -11,6 +11,7 @@ from functools import lru_cache
 
 import torch
 
+from ._compilation import maybe_product
 from ._number_theory import MAX_MODULUS
 
 _RADIX_BITS = 31
@@ -23,6 +24,9 @@ def _montgomery_product(
     left: torch.Tensor, right: torch.Tensor | int, q: int, negative_inverse: int
 ) -> torch.Tensor:
     """Return left*right*R^-1 mod q for canonical operands in [0,q)."""
+    compiled = maybe_product(left, right, q, negative_inverse)
+    if compiled is not None:
+        return compiled
     # Stored operands are int32. Only the reduction's local intermediates
     # are widened; fused compiler kernels can keep these in registers.
     product = left.to(torch.int64) * right
