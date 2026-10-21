@@ -1,0 +1,140 @@
+{
+  "spec": {
+    "n": 256,
+    "p": 17,
+    "Q": [
+      134250497,
+      134511617,
+      134563841,
+      134737921,
+      134842369
+    ],
+    "P": [
+      537071617,
+      537332737
+    ],
+    "k": 2,
+    "noise_std": 3.2,
+    "seeds": {
+      "source": 193501,
+      "destination": 193502,
+      "evaluation_keys": 193503,
+      "component": 193504
+    },
+    "secret_distribution": "independent ternary Gaussian channels",
+    "storage": "in-memory evaluation keys; no timed disk IO"
+  },
+  "fixture_sha256": "77f9a397b93ba10dd55ddc97d7e051b595a948f46e4a3939a3e882a14c83534e",
+  "commit": "b8f28bf8e9552e2ed4c19b322637f6131b5ab24c",
+  "source_sha256": "1a8ab4903dca621cfe41120b66eb8804a4eb54e4e2ce9bf363c3667034fdb1a9",
+  "environment": {
+    "torch": "2.14.1",
+    "python": "3.13.2",
+    "platform": "macOS-27.0.1-arm64-arm-64bit-Mach-O",
+    "cpu": "arm",
+    "threads": 1,
+    "interop_threads": 1,
+    "affinity": "not supported by macOS",
+    "compile": "0"
+  },
+  "operations": {
+    "SwitchSmall": {
+      "wall_seconds": [
+        10.62327733300026,
+        11.659563207999781,
+        11.598564541999622,
+        10.499032707999504,
+        10.865410166999936
+      ],
+      "process_cpu_seconds": [
+        10.048603000000002,
+        10.489171000000002,
+        10.525027000000001,
+        10.056624999999997,
+        10.141022
+      ],
+      "mean": 11.04916959159982,
+      "stddev": 0.5459435665039946,
+      "output_sha256": [
+        "ae35092d621ca5cab006032e44d02c4cd4113b854fe59c54afa081bc7bedeaf2"
+      ],
+      "errors": [
+        {
+          "max_abs": 229,
+          "coefficients": 2097152,
+          "consistent_Q_limbs": 5
+        }
+      ],
+      "compiler_before": {},
+      "compiler_after": {}
+    },
+    "SwitchBig": {
+      "wall_seconds": [
+        15.84312491700075,
+        15.235720790999949,
+        15.130167083999368,
+        15.54624720799984,
+        14.480920291000075
+      ],
+      "process_cpu_seconds": [
+        14.06922800000001,
+        13.804172000000008,
+        13.742576999999997,
+        14.05801799999999,
+        13.505186000000009
+      ],
+      "mean": 15.247236058199997,
+      "stddev": 0.5112652933912515,
+      "output_sha256": [
+        "a294c546131d9c45e78e724680f5a6e6d15e5102547fca301581ac253578c87f"
+      ],
+      "errors": [
+        {
+          "max_abs": 1160,
+          "coefficients": 2097152,
+          "consistent_Q_limbs": 5
+        }
+      ],
+      "compiler_before": {},
+      "compiler_after": {}
+    },
+    "TwoSwitchBig": {
+      "wall_seconds": [
+        31.773540375000266,
+        28.643380458999673,
+        28.367747708000024,
+        24.926593375000266,
+        24.170912999999928
+      ],
+      "process_cpu_seconds": [
+        27.832628,
+        26.46374800000001,
+        26.23038699999998,
+        23.764306000000033,
+        23.27435700000001
+      ],
+      "mean": 27.57643498340003,
+      "stddev": 3.0821860210427032,
+      "output_sha256": [
+        "a294c546131d9c45e78e724680f5a6e6d15e5102547fca301581ac253578c87f",
+        "2e8ad57f783864ee096384c1937bcf4535105b5dfc83e729979a517fc2eba9df"
+      ],
+      "errors": [
+        {
+          "max_abs": 1160,
+          "coefficients": 2097152,
+          "consistent_Q_limbs": 5
+        },
+        {
+          "max_abs": 1107,
+          "coefficients": 2097152,
+          "consistent_Q_limbs": 5
+        }
+      ],
+      "compiler_before": {},
+      "compiler_after": {}
+    }
+  },
+  "input_and_key_immutable": true,
+  "status": "complete"
+}
