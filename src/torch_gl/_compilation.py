@@ -82,6 +82,12 @@ def prepare_cpu_kernels(moduli):
                 tuple(_scalar(index + 1, torch.int32, index + 1) for index in range(arity)),
                 *_constants(q, inverse),
             )
+        for inverse_direction in (False, True):
+            _gaussian_kernel(inverse_direction)(
+                values.reshape(-1, 2),
+                (_scalar(1, torch.int32, 1), _scalar(2, torch.int32, 2)),
+                *_constants(q, inverse),
+            )
     return cpu_optimization_info()
 
 
@@ -93,5 +99,41 @@ def cpu_optimization_info():
         "threshold": _THRESHOLD,
         "linear_cache": _linear_kernel.cache_info()._asdict(),
         "scalar_cache": _scalar.cache_info()._asdict(),
+        "gaussian_cache": _gaussian_kernel.cache_info()._asdict(),
         "compiler_stats": dict(counters["stats"]),
     }
+
+
+def _add(left, right, q):
+    total = left + right
+    return torch.where(total >= q, total - q, total)
+
+
+def _subtract(left, right, q):
+    difference = left - right
+    return torch.where(difference < 0, difference + q, difference)
+
+
+@lru_cache(maxsize=2)
+def _gaussian_kernel(inverse):
+    def kernel(values, weights, q, negative_inverse):
+        left, right = values.unbind(-1)
+        if inverse:
+            real = _product(_add(left, right, q), weights[0], q, negative_inverse)
+            imag = _product(_subtract(left, right, q), weights[1], q, negative_inverse)
+            return torch.stack((real, imag), -1)
+        real = _product(left, weights[0], q, negative_inverse)
+        imag = _product(right, weights[1], q, negative_inverse)
+        return torch.stack((_add(real, imag, q), _subtract(real, imag, q)), -1)
+
+    return torch.compile(kernel, backend="inductor", fullgraph=True, dynamic=True)
+
+
+def maybe_gaussian(values, weights, q, negative_inverse, *, inverse):
+    if not _enabled(values):
+        return None
+    flat = values.contiguous().view(-1, 2)
+    weights = tuple(_scalar(weight, torch.int32, index + 1) for index, weight in enumerate(weights))
+    return _gaussian_kernel(inverse)(flat, weights, *_constants(q, negative_inverse)).reshape(
+        values.shape
+    )

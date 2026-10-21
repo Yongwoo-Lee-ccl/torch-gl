@@ -4,6 +4,7 @@ from functools import lru_cache
 
 import torch
 
+from ._gaussian import gaussian_boundary
 from ._number_theory import root_of_unity
 from ._transform_tables import device_powers
 from .modular import arithmetic_context, gaussian_mul_residues
@@ -60,20 +61,11 @@ def native_multiplier(ring, device: torch.device, backend: str | None = None):
         )
         inverse_steps.append((inverse_kernel, inverse_twist))
     forward_steps, inverse_steps = tuple(forward_steps), tuple(reversed(inverse_steps))
-    inverse_two = arithmetic.constant(pow(2, -1, ring.q))
-    encoded_imaginary = arithmetic.constant(imaginary_root) if imaginary_root is not None else None
-    inverse_two_imaginary = (
-        arithmetic.constant(pow(2 * imaginary_root, -1, ring.q)) if imaginary_root else None
-    )
+    boundary = gaussian_boundary(ring.q, imaginary_root) if imaginary_root is not None else None
 
     def kernel(left: torch.Tensor, right: torch.Tensor) -> torch.Tensor:
-        operands = arithmetic.encode(torch.stack((left, right), dim=0))
-        if imaginary_root is not None:
-            real, imag = operands.unbind(-1)
-            component = arithmetic.multiply(imag, encoded_imaginary)
-            operands = torch.stack(
-                (arithmetic.add(real, component), arithmetic.subtract(real, component)), dim=-1
-            )
+        operands = torch.stack((left, right), dim=0)
+        operands = boundary.split(operands) if boundary is not None else arithmetic.encode(operands)
         for transform, twist in forward_steps:
             if twist is not None:
                 operands = arithmetic.multiply(operands, twist)
@@ -88,13 +80,6 @@ def native_multiplier(ring, device: torch.device, backend: str | None = None):
             product = transform(product)
             if twist is not None:
                 product = arithmetic.multiply(product, twist)
-        if imaginary_root is not None:
-            positive, negative = product.unbind(-1)
-            real = arithmetic.multiply(arithmetic.add(positive, negative), inverse_two)
-            imag = arithmetic.multiply(
-                arithmetic.subtract(positive, negative), inverse_two_imaginary
-            )
-            product = torch.stack((real, imag), dim=-1)
-        return arithmetic.decode(product)
+        return boundary.join(product) if boundary is not None else arithmetic.decode(product)
 
     return torch.compile(kernel, backend=backend, fullgraph=True) if backend else kernel

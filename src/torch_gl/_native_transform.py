@@ -1,7 +1,6 @@
 """Prepared native Gaussian-split transforms, including independent batch axes."""
 
-import torch
-
+from ._gaussian import gaussian_boundary
 from ._number_theory import root_of_unity
 from ._transform_tables import device_powers
 from .cyclotomic import CyclotomicNTTPlan
@@ -29,9 +28,7 @@ class NativeTransform:
             if gaussian
             else root_of_unity(ring.q, 4)
         )
-        self._imaginary = self.arithmetic.constant(imaginary_root)
-        self._inverse_two = self.arithmetic.constant(pow(2, -1, ring.q))
-        self._inverse_two_imaginary = self.arithmetic.constant(pow(2 * imaginary_root, -1, ring.q))
+        self._gaussian = gaussian_boundary(ring.q, imaginary_root)
         self._forward_steps, self._inverse_steps = [], []
         for ring_dim, plan in enumerate(plans):
             dim = batch_ndim + ring_dim
@@ -64,11 +61,7 @@ class NativeTransform:
 
     def forward(self, coefficients):
         arithmetic = self.arithmetic
-        real, imag = arithmetic.encode(coefficients).unbind(-1)
-        imaginary = arithmetic.multiply(imag, self._imaginary)
-        values = torch.stack(
-            (arithmetic.add(real, imaginary), arithmetic.subtract(real, imaginary)), -1
-        )
+        values = self._gaussian.split(coefficients)
         for transform, twist in self._forward_steps:
             if twist is not None:
                 values = arithmetic.multiply(values, twist)
@@ -81,9 +74,4 @@ class NativeTransform:
             values = transform(values)
             if twist is not None:
                 values = arithmetic.multiply(values, twist)
-        positive, negative = values.unbind(-1)
-        real = arithmetic.multiply(arithmetic.add(positive, negative), self._inverse_two)
-        imag = arithmetic.multiply(
-            arithmetic.subtract(positive, negative), self._inverse_two_imaginary
-        )
-        return arithmetic.decode(torch.stack((real, imag), -1))
+        return self._gaussian.join(values)
