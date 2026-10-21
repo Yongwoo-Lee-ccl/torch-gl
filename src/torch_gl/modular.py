@@ -37,12 +37,12 @@ def mul_mod(left: torch.Tensor, right: torch.Tensor | int, q: int) -> torch.Tens
 
 def add_mod(left: torch.Tensor, right: torch.Tensor | int, q: int) -> torch.Tensor:
     total = left + right
-    return torch.where(total >= q, total - q, total)
+    return total.add_(total >= q, alpha=-q)
 
 
 def sub_mod(left: torch.Tensor, right: torch.Tensor | int, q: int) -> torch.Tensor:
     difference = left - right
-    return torch.where(difference < 0, difference + q, difference)
+    return difference.add_(difference < 0, alpha=q)
 
 
 @dataclass(frozen=True)
@@ -68,13 +68,9 @@ class ResidueArithmetic:
         return self.context.multiply(left, right)
 
     def add(self, left: torch.Tensor, right: torch.Tensor | int) -> torch.Tensor:
-        if left.device.type == "cpu":
-            return (left + right).remainder(self.q)
         return add_mod(left, right, self.q)
 
     def subtract(self, left: torch.Tensor, right: torch.Tensor | int) -> torch.Tensor:
-        if left.device.type == "cpu":
-            return (left - right).remainder(self.q)
         return sub_mod(left, right, self.q)
 
 

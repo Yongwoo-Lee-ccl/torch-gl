@@ -2,7 +2,8 @@
 
 R=2**31 and q<2**30. Ordinary products are below 2**60, the cancellation
 product is below 2**62, and the reduction accumulator is below 3*2**60.
-Every intermediate fits signed int64 without relying on wrapping overflow.
+Wide accumulators fit signed int64. Cancellation intentionally uses int32
+low-word wraparound before masking to 31 bits.
 """
 
 from dataclasses import dataclass, field
@@ -24,19 +25,14 @@ def _montgomery_product(
     """Return left*right*R^-1 mod q for canonical operands in [0,q)."""
     # Stored operands are int32. Only the reduction's local intermediates
     # are widened; fused compiler kernels can keep these in registers.
-    left_wide = left.to(torch.int64)
-    right_wide = right.to(torch.int64) if isinstance(right, torch.Tensor) else right
-    product = left_wide * right_wide
-    # Only fresh local buffers are mutated; operands and cached tables remain
-    # untouched, including when they are noncontiguous or broadcast views.
-    cancellation = product & _RADIX_MASK
-    cancellation.mul_(negative_inverse).bitwise_and_(_RADIX_MASK).mul_(q)
-    product.add_(cancellation).bitwise_right_shift_(_RADIX_BITS)
-    # REDC is below 2q < 2**31, so even the final correction uses int32.
+    product = left.to(torch.int64) * right
+    # Cancellation needs only the low 31 bits. Int32 multiplication wraps
+    # intentionally; all other wide arithmetic is bounded without overflow.
+    cancellation = product.to(torch.int32)
+    cancellation.mul_(negative_inverse).bitwise_and_(_RADIX_MASK)
+    product.add_(cancellation, alpha=q).bitwise_right_shift_(_RADIX_BITS)
     reduced = product.to(torch.int32)
-    if left.device.type == "cpu":
-        return reduced.remainder_(q)
-    return torch.where(reduced >= q, reduced - q, reduced)
+    return reduced.add_(reduced >= q, alpha=-q)
 
 
 @dataclass(frozen=True)

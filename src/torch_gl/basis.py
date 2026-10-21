@@ -40,7 +40,7 @@ class RNSBasisConverter:
             source_values, constants, self.source_moduli, strict=True
         ):
             summand = mul_mod(value, inverse, modulus)
-            result.append(torch.where(summand > modulus // 2, summand - modulus, summand))
+            result.append(summand.add_(summand > modulus // 2, alpha=-modulus))
         return tuple(result)
 
     def convert_prepared(self, prepared, target, *, source_values=None):
