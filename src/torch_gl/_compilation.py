@@ -4,6 +4,7 @@ import os
 from functools import lru_cache
 
 import torch
+from torch._dynamo import is_compiling
 
 _THRESHOLD = 4096
 _MASK = (1 << 31) - 1
@@ -24,7 +25,7 @@ def _product(left, right, q, negative_inverse):
 def _enabled(values):
     # Nested compiler dispatch is never initiated during outer tracing.
     return (
-        not torch.compiler.is_compiling()
+        not is_compiling()
         and values.device.type == "cpu"
         and values.dtype == torch.int32
         and values.numel() >= _THRESHOLD
