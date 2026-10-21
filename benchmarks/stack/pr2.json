@@ -1,0 +1,158 @@
+{
+  "spec": {
+    "n": 256,
+    "p": 17,
+    "Q": [
+      134250497,
+      134511617,
+      134563841,
+      134737921,
+      134842369
+    ],
+    "P": [
+      537071617,
+      537332737
+    ],
+    "k": 2,
+    "noise_std": 3.2,
+    "seeds": {
+      "source": 193501,
+      "destination": 193502,
+      "evaluation_keys": 193503,
+      "component": 193504
+    },
+    "secret_distribution": "independent ternary Gaussian channels",
+    "storage": "in-memory evaluation keys; no timed disk IO"
+  },
+  "fixture_sha256": "77f9a397b93ba10dd55ddc97d7e051b595a948f46e4a3939a3e882a14c83534e",
+  "commit": "3de2122139ea3fa397149156328144052f2f9815",
+  "source_sha256": "99ff9be03a2d528f39bb3e351e0bbdbfb396069853035981d1fae5effc6dda78",
+  "environment": {
+    "torch": "2.14.1",
+    "python": "3.13.2",
+    "platform": "macOS-27.0.1-arm64-arm-64bit-Mach-O",
+    "cpu": "arm",
+    "threads": 1,
+    "interop_threads": 1,
+    "affinity": "not supported by macOS",
+    "compile": "1"
+  },
+  "operations": {
+    "SwitchSmall": {
+      "wall_seconds": [
+        5.7120603749999646,
+        6.16602041600072,
+        5.884062000000085,
+        5.945232125000075,
+        6.038783667000644
+      ],
+      "process_cpu_seconds": [
+        5.688796,
+        5.9587949999999985,
+        5.848241999999999,
+        5.890906000000001,
+        5.900668000000003
+      ],
+      "mean": 5.9492317166002975,
+      "stddev": 0.16994868782919084,
+      "output_sha256": [
+        "ae35092d621ca5cab006032e44d02c4cd4113b854fe59c54afa081bc7bedeaf2"
+      ],
+      "errors": [
+        {
+          "max_abs": 229,
+          "coefficients": 2097152,
+          "consistent_Q_limbs": 5
+        }
+      ],
+      "compiler_before": {
+        "calls_captured": 57,
+        "unique_graphs": 3
+      },
+      "compiler_after": {
+        "calls_captured": 57,
+        "unique_graphs": 3
+      }
+    },
+    "SwitchBig": {
+      "wall_seconds": [
+        9.490548832999593,
+        7.87261266600035,
+        7.865290374999859,
+        7.7429574999996476,
+        10.215319166999507
+      ],
+      "process_cpu_seconds": [
+        8.330755999999994,
+        7.743643000000006,
+        7.780180999999999,
+        7.69062000000001,
+        9.771561000000005
+      ],
+      "mean": 8.637345708199792,
+      "stddev": 1.1400408040028676,
+      "output_sha256": [
+        "a294c546131d9c45e78e724680f5a6e6d15e5102547fca301581ac253578c87f"
+      ],
+      "errors": [
+        {
+          "max_abs": 1160,
+          "coefficients": 2097152,
+          "consistent_Q_limbs": 5
+        }
+      ],
+      "compiler_before": {
+        "calls_captured": 57,
+        "unique_graphs": 3
+      },
+      "compiler_after": {
+        "calls_captured": 57,
+        "unique_graphs": 3
+      }
+    },
+    "TwoSwitchBig": {
+      "wall_seconds": [
+        30.90162437500021,
+        20.7797572089994,
+        29.18976562500029,
+        35.19855883400032,
+        19.889104666000094
+      ],
+      "process_cpu_seconds": [
+        21.807844000000003,
+        20.401204999999976,
+        25.874732999999992,
+        30.264404000000013,
+        19.690337999999997
+      ],
+      "mean": 27.191762141800062,
+      "stddev": 6.639022941019847,
+      "output_sha256": [
+        "a294c546131d9c45e78e724680f5a6e6d15e5102547fca301581ac253578c87f",
+        "2e8ad57f783864ee096384c1937bcf4535105b5dfc83e729979a517fc2eba9df"
+      ],
+      "errors": [
+        {
+          "max_abs": 1160,
+          "coefficients": 2097152,
+          "consistent_Q_limbs": 5
+        },
+        {
+          "max_abs": 1107,
+          "coefficients": 2097152,
+          "consistent_Q_limbs": 5
+        }
+      ],
+      "compiler_before": {
+        "calls_captured": 57,
+        "unique_graphs": 3
+      },
+      "compiler_after": {
+        "calls_captured": 57,
+        "unique_graphs": 3
+      }
+    }
+  },
+  "input_and_key_immutable": true,
+  "status": "complete"
+}
