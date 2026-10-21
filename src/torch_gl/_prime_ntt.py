@@ -6,6 +6,7 @@ same order, so pointwise operations and matrix canonical gathers agree.
 
 import torch
 
+from ._bounded import bounded_sum_reducer
 from ._number_theory import unit_generator
 from .modular import arithmetic_context
 from .ntt import NTTPlan
@@ -28,6 +29,7 @@ def prime_kernel(q, p, root, device, dim, inverse):
     )
     spectrum = forward(arithmetic.encode(weights))
     inverse_p = arithmetic.constant(pow(p, -1, q))
+    short_sum = bounded_sum_reducer(q, length) if length <= 16 else None
 
     def kernel(values):
         coefficients = values.movedim(dim, -1)
@@ -41,7 +43,11 @@ def prime_kernel(q, p, root, device, dim, inverse):
             result = arithmetic.add(convolution, coefficients[..., :1])
             return result.index_select(-1, natural).movedim(-1, dim)
         # DFT of [0,slots] at j=0 is the sum of its nonzero entries.
-        zero = coefficients.to(torch.int64).sum(-1, keepdim=True).remainder(q).to(torch.int32)
+        zero = (
+            short_sum(coefficients, keepdim=True)
+            if short_sum is not None
+            else coefficients.to(torch.int64).sum(-1, keepdim=True).remainder(q).to(torch.int32)
+        )
         rest = convolution.index_select(-1, natural)
         joined = torch.cat((zero, rest[..., :-1]), -1)
         result = arithmetic.multiply(arithmetic.subtract(joined, rest[..., -1:]), inverse_p)
