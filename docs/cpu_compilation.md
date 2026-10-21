@@ -4,6 +4,9 @@ The arithmetic is authored entirely in Python/PyTorch. There are no handwritten
 C++, CUDA, Triton kernels or Torch extensions. `torch.compile` uses Inductor's
 normal generated code and a working compiler toolchain.
 
+Install the development extra (`pip install -e ".[dev]"`) to run the benchmark;
+NumPy is used only for raw-byte hashing outside timed arithmetic.
+
 Eager execution remains the default. To enable the small shared CPU graphs:
 
 ```bash
