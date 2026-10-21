@@ -85,7 +85,9 @@ def odd_prime_power(p: int) -> tuple[int, int]:
 @lru_cache(maxsize=128)
 def root_of_unity(q: int, length: int) -> int:
     validate_modulus(q)
-    factors = smooth_factors(length)
+    if type(length) is not int or length < 1:
+        raise ValueError("root order must be a positive integer")
+    factors = prime_factors(length)
     if (q - 1) % length:
         raise ValueError(f"NTT length {length} must divide q - 1 ({q - 1})")
     if length == 1:
@@ -95,3 +97,42 @@ def root_of_unity(q: int, length: int) -> int:
         if all(pow(root, length // factor, q) != 1 for factor in set(factors)):
             return root
     raise ValueError("could not find a root of unity")  # pragma: no cover
+
+
+def prime_factors(value: int) -> tuple[int, ...]:
+    factors = []
+    divisor = 2
+    while divisor * divisor <= value:
+        if value % divisor == 0:
+            factors.append(divisor)
+            while value % divisor == 0:
+                value //= divisor
+        divisor += 1
+    if value > 1:
+        factors.append(value)
+    return tuple(factors)
+
+
+@lru_cache(maxsize=128)
+def unit_generator(p: int) -> int:
+    prime, exponent = odd_prime_power(p)
+    order = (prime - 1) * prime ** (exponent - 1)
+    for candidate in range(2, p):
+        if candidate % prime and all(
+            pow(candidate, order // factor, p) != 1 for factor in prime_factors(order)
+        ):
+            return candidate
+    raise ValueError("no unit generator")
+
+
+def supports_native_cyclotomic(p: int) -> bool:
+    prime, exponent = odd_prime_power(p)
+    if prime == 3:
+        return True
+    if exponent != 1:
+        return False
+    try:
+        smooth_factors(p - 1)
+    except ValueError:
+        return False
+    return True

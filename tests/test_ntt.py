@@ -146,7 +146,7 @@ def test_roots_and_invalid_inputs():
     with pytest.raises(ValueError):
         CyclotomicNTTPlan(97, 9)
     with pytest.raises(ValueError):
-        CyclotomicNTTPlan(101, 5)
+        CyclotomicNTTPlan(71, 5)
     with pytest.raises(ValueError):
         GaussianNTTPlan(97, 16)
     with pytest.raises(ValueError):

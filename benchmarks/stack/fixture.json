@@ -1,0 +1,29 @@
+{
+  "spec": {
+    "n": 256,
+    "p": 17,
+    "Q": [
+      134250497,
+      134511617,
+      134563841,
+      134737921,
+      134842369
+    ],
+    "P": [
+      537071617,
+      537332737
+    ],
+    "k": 2,
+    "noise_std": 3.2,
+    "seeds": {
+      "source": 193501,
+      "destination": 193502,
+      "evaluation_keys": 193503,
+      "component": 193504
+    },
+    "secret_distribution": "independent ternary Gaussian channels",
+    "storage": "in-memory evaluation keys; no timed disk IO"
+  },
+  "sha256": "77f9a397b93ba10dd55ddc97d7e051b595a948f46e4a3939a3e882a14c83534e",
+  "serialization": "recursive sorted JSON of SHA256(dtype,shape,C-order raw bytes)"
+}
