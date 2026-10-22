@@ -71,3 +71,29 @@ def test_prime17_small_and_big_switching():
         result = getattr(switcher, "switch_" + kind)(component, key)
         error = result.b + result.a * switcher._embed(destination) - component * source_full
         assert int(error.centered_coefficients().abs().max()) < 10000
+
+
+def test_prime17_full_ntt_product_is_a_times_b_transpose_without_extra_scale():
+    ring = RNSRing.for_parameters(2, 17, limb_count=1)
+    plan = MatrixNTTPlan(ring.rings[0])
+    q = ring.moduli[0]
+    generator = torch.Generator().manual_seed(193517)
+    left = torch.randint(q, plan.slot_shape, dtype=torch.int32, generator=generator)
+    right = torch.randint(q, plan.slot_shape, dtype=torch.int32, generator=generator)
+    left_poly, right_poly = plan.inverse(left), plan.inverse(right)
+    transposed = matrix_transpose(ring.polynomial(right_poly.coefficients)).limbs[0]
+    actual = plan.forward(plan.multiply(left_poly, transposed))
+    expected = torch.empty_like(actual)
+    for w in range(16):
+        for row in range(2):
+            for column in range(2):
+                for channel in range(2):
+                    expected[w, row, column, channel] = (
+                        sum(
+                            int(left[w, row, inner, channel])
+                            * int(right[w, column, inner, channel])
+                            for inner in range(2)
+                        )
+                        % q
+                    )
+    assert torch.equal(actual, expected)

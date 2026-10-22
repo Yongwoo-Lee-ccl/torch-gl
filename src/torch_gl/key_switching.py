@@ -13,7 +13,7 @@ from ._transform_tables import resolve_device
 from .basis import RNSBasisConverter
 from .ciphertext import Ciphertext, MatrixProductCiphertext, QuadraticCiphertext
 from .matrix import matrix_transpose
-from .modular import mul_mod, sub_mod
+from .modular import mul_mod
 from .multivariate_poly import MultivariatePoly
 from .rns import RNSPoly, RNSRing
 
@@ -477,14 +477,14 @@ class KeySwitcher:
                     temporary_a.clear()
             else:
                 # Han–Ki ModDown: (Q-part - Conv_P->Q(P-part)) / P modulo q.
-                converted_b = self._down_converter.convert_prepared(prepared_b, prime)
-                converted_a = self._down_converter.convert_prepared(prepared_a, prime)
-                if self.parameters.plaintext_modulus is not None:
-                    converted_b = mul_mod(converted_b, self.parameters.plaintext_modulus, prime)
-                    converted_a = mul_mod(converted_a, self.parameters.plaintext_modulus, prime)
                 inverse_P = pow(self.parameters.key_modulus, -1, prime)
-                values_b = mul_mod(sub_mod(coefficients_b, converted_b, prime), inverse_P, prime)
-                values_a = mul_mod(sub_mod(coefficients_a, converted_a, prime), inverse_P, prime)
+                multiplier = self.parameters.plaintext_modulus or 1
+                values_b = self._down_converter.subtract_and_scale(
+                    coefficients_b, prepared_b, prime, inverse_P, multiplier=multiplier
+                )
+                values_a = self._down_converter.subtract_and_scale(
+                    coefficients_a, prepared_a, prime, inverse_P, multiplier=multiplier
+                )
                 ring = self.parameters.ring.rings[index - self.k]
                 result_b.append(MultivariatePoly._from_owned(ring, values_b))
                 result_a.append(MultivariatePoly._from_owned(ring, values_a))

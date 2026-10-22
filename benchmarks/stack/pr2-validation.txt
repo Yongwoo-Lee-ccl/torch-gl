@@ -1,0 +1,12 @@
+........................................................................ [ 20%]
+.........s...s.................................................s........ [ 41%]
+.....................................................................s.. [ 61%]
+...............s........................................................ [ 82%]
+...............................................................          [100%]
+=========================== short test summary info ============================
+SKIPPED [1] tests/test_compiled_multiplication.py:38: CUDA hardware is unavailable
+SKIPPED [1] tests/test_compiled_ntt.py:24: CUDA hardware is unavailable
+SKIPPED [1] tests/test_engine.py:197: CUDA hardware is unavailable
+SKIPPED [1] tests/test_montgomery.py:98: CUDA hardware is unavailable
+SKIPPED [1] tests/test_multivariate_poly.py:111: CUDA hardware is unavailable
+346 passed, 5 skipped in 61.66s (0:01:01)

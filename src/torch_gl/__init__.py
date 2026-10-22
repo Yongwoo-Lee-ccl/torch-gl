@@ -1,5 +1,6 @@
 """Exact tensor polynomial arithmetic for Gentry–Lee rings."""
 
+from ._compilation import cpu_optimization_info, prepare_cpu_kernels
 from ._transform_tables import clear_transform_cache
 from .automorphisms import automorphism, conjugate, embed, hermitian_transpose, swap_axes
 from .bootstrapping import BootstrapKeys, BootstrapParameters, Bootstrapper, generate_bootstrap_keys
@@ -28,6 +29,8 @@ from .trace import AuxiliaryMatrixPlan, auxiliary_matrix_multiply
 from .twisted import GaussianNTTPlan
 
 __all__ = [
+    "cpu_optimization_info",
+    "prepare_cpu_kernels",
     "BootstrapKeys",
     "BootstrapParameters",
     "Bootstrapper",

@@ -2,9 +2,8 @@
 
 import math
 
-import torch
-
-from .modular import add_mod, mul_mod
+from ._bounded import montgomery_linear_form
+from .modular import mul_mod
 
 
 class RNSBasisConverter:
@@ -48,15 +47,18 @@ class RNSBasisConverter:
             raise ValueError("target modulus is not in this converter")
         if source_values is not None and target in self.source_moduli:
             return source_values[self.source_moduli.index(target)]
-        if target in self.source_moduli:
-            index = self.source_moduli.index(target)
-            return mul_mod(
-                prepared[index].remainder(target), self._partial_products[index] % target, target
-            )
-        result = torch.zeros_like(prepared[0])
-        for summand, weight in zip(prepared, self._weights[target], strict=True):
-            result = add_mod(result, mul_mod(summand.remainder(target), weight, target), target)
-        return result
+        form = montgomery_linear_form(
+            target, tuple(q // 2 for q in self.source_moduli), self._weights[target]
+        )
+        return form(prepared)
+
+    def subtract_and_scale(self, base, prepared, target, scale, *, multiplier=1):
+        """Fused (base - multiplier*Conv(prepared))*scale, preserving the lift."""
+        if target not in self._weights:
+            raise ValueError("target modulus is not in this converter")
+        weights = (scale,) + tuple(-multiplier * w * scale for w in self._weights[target])
+        bounds = (target - 1,) + tuple(q // 2 for q in self.source_moduli)
+        return montgomery_linear_form(target, bounds, weights)((base,) + tuple(prepared))
 
     def convert(self, source_values):
         prepared = self.prepare(source_values)
