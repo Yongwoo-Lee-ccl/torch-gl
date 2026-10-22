@@ -4,7 +4,7 @@ import math
 
 import torch
 
-from ._number_theory import odd_prime_power
+from ._number_theory import odd_prime_power, supports_native_cyclotomic, unit_generator
 from ._transform_tables import resolve_device
 from .multivariate_poly import MultivariatePoly
 from .rings import QuotientAxis
@@ -16,7 +16,7 @@ class MatrixEncoder:
 
     Slots have W first, followed by the other variables in ring order. Thus the
     default ring accepts (phi(p), n, n) matrices. X/Y roots are exp(2*pi*i*5**j/(4n));
-    W roots are exp(2*pi*i*2**ell/p), with 2 generating the units modulo 3**k.
+    W roots follow a deterministic generator of the units modulo p (2 for 3**k).
     Floating transforms use complex128. Stored polynomial limbs remain int32.
     """
 
@@ -35,20 +35,21 @@ class MatrixEncoder:
             raise ValueError("encoding requires a W cyclotomic axis")
         W_axis = ring.axes[self._W_dim]
         self.p = W_axis.cyclotomic_order
-        if self.p is None or odd_prime_power(self.p)[0] != 3:
-            raise ValueError("encoding currently supports only power-of-three cyclotomics")
+        if self.p is None or not supports_native_cyclotomic(self.p):
+            raise ValueError("encoding currently supports native cyclotomics")
         self._cyclotomics = {}
         self._twists = {}
         self._permutations = {}
         for dim, axis in enumerate(ring.axes):
             if axis.cyclotomic_order:
                 p = axis.cyclotomic_order
-                if odd_prime_power(p)[0] != 3:
-                    raise ValueError("encoding currently supports only power-of-three cyclotomics")
+                if not supports_native_cyclotomic(p):
+                    raise ValueError("encoding currently supports native cyclotomics")
                 indices = torch.tensor(
-                    [pow(2, slot, p) for slot in range(axis.degree)], device=self.device
+                    [pow(unit_generator(p), slot, p) for slot in range(axis.degree)],
+                    device=self.device,
                 )
-                self._cyclotomics[dim] = (p, p // 3, indices)
+                self._cyclotomics[dim] = (p, p // odd_prime_power(p)[0], indices)
                 continue
             if axis != QuotientAxis.power_of_i(axis.name, axis.degree):
                 raise ValueError("X/Y axes must satisfy X**n=i or Y**n=i")
@@ -86,8 +87,10 @@ class MatrixEncoder:
             projected = torch.fft.fft(padded, dim=dim) / p
             # Reduce the length-p interpolant modulo Phi_p. Its tail is not
             # zero, even though values at nonprimitive roots were padded by 0.
-            tail = projected.narrow(dim, 2 * stride, stride)
-            values = projected.narrow(dim, 0, 2 * stride) - torch.cat((tail, tail), dim=dim)
+            prime = odd_prime_power(p)[0]
+            degree = (prime - 1) * stride
+            tail = projected.narrow(dim, degree, stride)
+            values = projected.narrow(dim, 0, degree) - torch.cat((tail,) * (prime - 1), dim=dim)
         for dim, twist in reversed(tuple(self._twists.items())):
             values = values.index_select(dim, self._permutations[dim][1])
             values = torch.fft.fft(values, dim=dim) / self.ring.axes[dim].degree

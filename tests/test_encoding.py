@@ -206,5 +206,5 @@ def test_encoding_rejects_invalid_inputs_and_aggregate_overflow():
         encoder.decode(torch.ones(encoder.slot_shape))
     with pytest.raises(ValueError, match="ring"):
         encoder.decode(RNSRing.for_parameters(4, 9).one())
-    with pytest.raises(ValueError, match="power-of-three"):
+    with pytest.raises(ValueError, match="native cyclotomics"):
         MatrixEncoder(RNSRing.for_parameters(2, 25))

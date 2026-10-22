@@ -8,7 +8,7 @@ from pathlib import Path
 import torch
 
 from ._native_transform import NativeTransform
-from ._number_theory import MAX_MODULUS, is_prime
+from ._number_theory import MAX_MODULUS, is_prime, odd_prime_power, supports_native_cyclotomic
 from ._transform_tables import resolve_device
 from .basis import RNSBasisConverter
 from .ciphertext import Ciphertext, MatrixProductCiphertext, QuadraticCiphertext
@@ -21,6 +21,13 @@ from .rns import RNSPoly, RNSRing
 def _special_primes(ring, count, plaintext_modulus=None):
     orders = [
         axis.cyclotomic_order if axis.cyclotomic_order else 4 * axis.degree for axis in ring.axes
+    ]
+    orders += [
+        axis.cyclotomic_order - 1
+        for axis in ring.axes
+        if axis.cyclotomic_order
+        and odd_prime_power(axis.cyclotomic_order)[0] != 3
+        and supports_native_cyclotomic(axis.cyclotomic_order)
     ]
     step = math.lcm(*orders, plaintext_modulus or 1)
     candidate = (max(ring.moduli) // step + 1) * step + 1

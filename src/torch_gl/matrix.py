@@ -4,6 +4,7 @@ from functools import lru_cache
 
 import torch
 
+from ._number_theory import odd_prime_power, unit_generator
 from ._transform_tables import device_powers, resolve_device
 from .cyclotomic import CyclotomicNTTPlan
 from .modular import arithmetic_context, residues
@@ -70,7 +71,7 @@ class MatrixNTTPlan:
     """NTT/INTT between coefficients and (phi(p),n,n,2) matrix slots.
 
     Last channels are evaluation at +I and -I, not Gaussian real/imaginary.
-    Positive roots follow powers of five (X/Y) and powers of two (W).
+    Positive roots follow powers of five (X/Y) and a unit generator (W).
     The negative branch uses their inverse roots. Public tensors are normal
     int32 residues; contraction stays in Montgomery form internally.
     """
@@ -90,7 +91,7 @@ class MatrixNTTPlan:
             or not isinstance(plans[W_dim], CyclotomicNTTPlan)
             or ring.axes[X_dim].degree != ring.axes[Y_dim].degree
         ):
-            raise ValueError("requires equal native X/Y degrees and a power-of-three W NTT")
+            raise ValueError("requires equal native X/Y degrees and a native W NTT")
         self.n, self.p = plans[X_dim].length, plans[W_dim].p
         self.slot_shape = (plans[W_dim].length, self.n, self.n, 2)
         # Match MatrixEncoder: W first, remaining axes in ring order. This
@@ -130,19 +131,28 @@ class MatrixNTTPlan:
                 inverse_kernel = shared_plan._kernel(
                     self.device, dim=dim, inverse=True, permuted=True
                 )
-                stride = self.p // 3
+                prime = odd_prime_power(self.p)[0]
+                stride = self.p // prime
 
-                def compact_index(exponent, stride=stride):
+                def compact_index(exponent, stride=stride, prime=prime):
+                    if prime != 3:
+                        return exponent - 1
                     root_class = exponent % 3
                     return (root_class - 1) * stride + (exponent - root_class) // 3
 
-                exponents = [pow(2, slot, self.p) for slot in range(plan.length)]
+                exponents = [
+                    pow(unit_generator(self.p), slot, self.p) for slot in range(plan.length)
+                ]
                 positive_order = [compact_index(exponent) for exponent in exponents]
                 negative_order = [compact_index((-exponent) % self.p) for exponent in exponents]
-                digit_order = tuple(
-                    branch * stride + frequency
-                    for branch in range(2)
-                    for frequency in _digit_order(stride)
+                digit_order = (
+                    tuple(range(plan.length))
+                    if prime != 3
+                    else tuple(
+                        branch * stride + frequency
+                        for branch in range(2)
+                        for frequency in _digit_order(stride)
+                    )
                 )
             # Fold digit reversal into the already-required canonical slot
             # permutation, rather than adding a separate reorder pass.

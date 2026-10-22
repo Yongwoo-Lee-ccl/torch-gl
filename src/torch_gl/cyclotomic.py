@@ -1,4 +1,4 @@
-"""Compact transforms for Phi_{3**exponent}, batching both primitive-root classes."""
+"""Native cyclotomic transforms: radix-3 branches and smooth Rader convolutions."""
 
 from collections.abc import Callable
 from dataclasses import dataclass, field
@@ -6,7 +6,7 @@ from functools import lru_cache
 
 import torch
 
-from ._number_theory import odd_prime_power, root_of_unity
+from ._number_theory import odd_prime_power, root_of_unity, supports_native_cyclotomic
 from ._transform_tables import device_powers, resolve_device
 from .modular import arithmetic_context, residues
 from .ntt import NTTPlan
@@ -14,11 +14,13 @@ from .ntt import NTTPlan
 
 @dataclass(frozen=True)
 class CyclotomicNTTPlan:
-    """Evaluation at primitive p-th roots, p=3**exponent, with phi(p) slots.
+    """Evaluation at primitive p-th roots, with phi(p) slots.
 
     Requires p | q-1. Slot order is 3*index+1 followed by 3*index+2,
     for index in range(p/3). A two-branch twisted butterfly and a single
     batched radix-3 transform implement both root classes without padding.
+    Prime p with smooth p-1 instead uses Rader convolution and natural slots
+    rho**1,...,rho**(p-1); both p and p-1 must divide q-1.
     """
 
     q: int
@@ -27,13 +29,16 @@ class CyclotomicNTTPlan:
 
     def __post_init__(self) -> None:
         prime, _ = odd_prime_power(self.p)
+        if not supports_native_cyclotomic(self.p):
+            raise ValueError("requires a power of three or a prime with smooth p-1")
         if prime != 3:
-            raise ValueError("native cyclotomic NTT currently supports powers of three only")
+            root_of_unity(self.q, self.p - 1)
         object.__setattr__(self, "root", root_of_unity(self.q, self.p))
 
     @property
     def length(self) -> int:
-        return 2 * (self.p // 3)
+        prime, exponent = odd_prime_power(self.p)
+        return (prime - 1) * prime ** (exponent - 1)
 
     def transform(
         self, values: torch.Tensor, *, dim: int = -1, inverse: bool = False
@@ -60,6 +65,10 @@ class CyclotomicNTTPlan:
         inverse: bool = False,
         permuted: bool = False,
     ) -> Callable[[torch.Tensor], torch.Tensor]:
+        if odd_prime_power(self.p)[0] != 3:
+            from ._prime_ntt import prime_kernel
+
+            return prime_kernel(self.q, self.p, self.root, device, dim, inverse)
         arithmetic = arithmetic_context(self.q)
         block_length = self.p // 3
         plan = NTTPlan(self.q, block_length, pow(self.root, 3, self.q))
@@ -104,6 +113,10 @@ class CyclotomicNTTPlan:
 
     def prepare(self, device: torch.device | str = "cpu") -> "CyclotomicNTTPlan":
         device = resolve_device(device)
+        if odd_prime_power(self.p)[0] != 3:
+            for inverse in (False, True):
+                self._kernel(device, inverse=inverse)
+            return self
         block_length = self.p // 3
         NTTPlan(self.q, block_length, pow(self.root, 3, self.q)).prepare(device)
         for sign in (1, -1):

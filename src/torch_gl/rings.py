@@ -11,6 +11,7 @@ from ._number_theory import (
     next_power_of_two,
     odd_prime_power,
     root_of_unity,
+    supports_native_cyclotomic,
     validate_modulus,
 )
 from .cyclotomic import CyclotomicNTTPlan
@@ -119,7 +120,12 @@ class PolynomialRing:
 
     def _uses_cyclotomic_ntt(self, axis: QuotientAxis) -> bool:
         p = axis.cyclotomic_order
-        return p is not None and odd_prime_power(p)[0] == 3 and (self.q - 1) % p == 0
+        return (
+            p is not None
+            and supports_native_cyclotomic(p)
+            and (self.q - 1) % p == 0
+            and (odd_prime_power(p)[0] == 3 or (self.q - 1) % (p - 1) == 0)
+        )
 
     def _uses_twisted_ntt(self, axis: QuotientAxis) -> bool:
         return (
