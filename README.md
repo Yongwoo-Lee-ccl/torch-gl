@@ -323,3 +323,11 @@ docs/                  Mathematical and implementation notes
 .github/workflows/     Tests, linting, and distribution builds
 pyproject.toml         Packaging, dependencies, and tool configuration
 ```
+
+### Optional single-thread CPU arithmetic graphs
+
+The eager arithmetic stays pure PyTorch. Set `TORCH_GL_COMPILE=1` and use one
+Torch thread to enable reusable Inductor graphs for bounded CRT/ModDown,
+Gaussian boundaries and Montgomery products. Prewarm with
+`prepare_cpu_kernels(P + Q)` before timing. See [CPU compilation](docs/cpu_compilation.md)
+for supported layouts, fallbacks and the frozen-fixture switching benchmark.

@@ -1,0 +1,166 @@
+{
+  "spec": {
+    "n": 256,
+    "p": 17,
+    "Q": [
+      134250497,
+      134511617,
+      134563841,
+      134737921,
+      134842369
+    ],
+    "P": [
+      537071617,
+      537332737
+    ],
+    "k": 2,
+    "noise_std": 3.2,
+    "seeds": {
+      "source": 193501,
+      "destination": 193502,
+      "evaluation_keys": 193503,
+      "component": 193504
+    },
+    "secret_distribution": "independent ternary Gaussian channels",
+    "storage": "in-memory evaluation keys; no timed disk IO"
+  },
+  "fixture_sha256": "77f9a397b93ba10dd55ddc97d7e051b595a948f46e4a3939a3e882a14c83534e",
+  "commit": "9c6a2f79852560f8814d002f1e5a719467e0f77e",
+  "source_sha256": "dc9d7bdc80b4173a8651fe8c78a202b8eef61b4e8a40588e9cffa1f982b6976a",
+  "environment": {
+    "torch": "2.14.1",
+    "python": "3.13.2",
+    "platform": "macOS-27.0.1-arm64-arm-64bit-Mach-O",
+    "cpu": "arm",
+    "threads": 1,
+    "interop_threads": 1,
+    "affinity": "not supported by macOS",
+    "compile": "1"
+  },
+  "operations": {
+    "SwitchSmall": {
+      "wall_seconds": [
+        4.245549582999956,
+        4.4136782080004195,
+        4.485838208000132,
+        4.544567625000127,
+        4.503117209000266
+      ],
+      "process_cpu_seconds": [
+        4.172713000000001,
+        4.384836,
+        4.477762000000002,
+        4.502922999999999,
+        4.495524
+      ],
+      "mean": 4.43855016660018,
+      "stddev": 0.11780556322171042,
+      "output_sha256": [
+        "ae35092d621ca5cab006032e44d02c4cd4113b854fe59c54afa081bc7bedeaf2"
+      ],
+      "errors": [
+        {
+          "max_abs": 229,
+          "coefficients": 2097152,
+          "consistent_Q_limbs": 5
+        }
+      ],
+      "compiler_before": {
+        "calls_captured": 159,
+        "unique_graphs": 7
+      },
+      "compiler_after": {
+        "calls_captured": 159,
+        "unique_graphs": 7
+      }
+    },
+    "SwitchBig": {
+      "wall_seconds": [
+        6.507386625000436,
+        6.176313292000486,
+        6.62466195900015,
+        7.455112375000681,
+        7.169934333000128
+      ],
+      "process_cpu_seconds": [
+        6.303744000000002,
+        6.103013999999995,
+        6.448535,
+        6.921044000000002,
+        6.827145000000002
+      ],
+      "mean": 6.786681716800376,
+      "stddev": 0.5173219202923667,
+      "output_sha256": [
+        "a294c546131d9c45e78e724680f5a6e6d15e5102547fca301581ac253578c87f"
+      ],
+      "errors": [
+        {
+          "max_abs": 1160,
+          "coefficients": 2097152,
+          "consistent_Q_limbs": 5
+        }
+      ],
+      "compiler_before": {
+        "calls_captured": 159,
+        "unique_graphs": 7
+      },
+      "compiler_after": {
+        "calls_captured": 159,
+        "unique_graphs": 7
+      }
+    },
+    "TwoSwitchBig": {
+      "wall_seconds": [
+        14.193214958999306,
+        13.236579166999945,
+        13.138805000000502,
+        14.292569791999995,
+        13.744025457999669
+      ],
+      "process_cpu_seconds": [
+        13.699521000000004,
+        12.965739999999997,
+        12.79290499999999,
+        13.683662999999981,
+        13.35143100000002
+      ],
+      "mean": 13.721038875199884,
+      "stddev": 0.5300527615856284,
+      "output_sha256": [
+        "a294c546131d9c45e78e724680f5a6e6d15e5102547fca301581ac253578c87f",
+        "2e8ad57f783864ee096384c1937bcf4535105b5dfc83e729979a517fc2eba9df"
+      ],
+      "errors": [
+        {
+          "max_abs": 1160,
+          "coefficients": 2097152,
+          "consistent_Q_limbs": 5
+        },
+        {
+          "max_abs": 1107,
+          "coefficients": 2097152,
+          "consistent_Q_limbs": 5
+        }
+      ],
+      "compiler_before": {
+        "calls_captured": 159,
+        "unique_graphs": 7
+      },
+      "compiler_after": {
+        "calls_captured": 159,
+        "unique_graphs": 7
+      }
+    }
+  },
+  "input_and_key_immutable": true,
+  "status": "complete",
+  "execution_control": {
+    "cpu_affinity": "unsupported on macOS",
+    "qos": "QOS_CLASS_USER_INITIATED",
+    "previous_qos": 33,
+    "qos_numeric": 25,
+    "relative_priority": 0
+  },
+  "runner_python": "3.13.2"
+}
